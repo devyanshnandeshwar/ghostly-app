@@ -24,7 +24,7 @@ flowchart TB
     Nginx -- "/api & /socket.io" --> Server
     Server -- Session Data --> Atlas
     Server -- Verify Image --> AI
-    Server -. "In-Memory Queues" .-> Server
+    Server -- Stores --> Queues["In-Memory Queues"]
 ```
 
 ### Services Breakdown

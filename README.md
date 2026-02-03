@@ -1,29 +1,29 @@
-# 👻 Ghosty
+# Ghosty
 
 Ghosty is an anonymous chat application that pairs users for real-time conversations based on gender and verification status. It leverages AI for authentic gender verification to ensure a safe and genuine user experience.
 
-## ✨ Features
+## Features
 
-### 🔒 Anonymous & Secure
+### Anonymous & Secure
 
 - **No Sign-up Required**: Jump straight into chatting without creating an account.
 - **End-to-End Encryption**: Chats are encrypted, ensuring privacy.
 - **Ephemeral Sessions**: User sessions are temporary and data is not persisted after the session ends.
 
-### 🤖 AI-Powered Gender Verification
+### AI-Powered Gender Verification
 
 - **Real-time Verification**: Uses a Deep Neural Network (DNN) based face detector and gender classification model to verify user gender via webcam.
 - **Anti-Spoofing**: Ensures users are real people before they can join specific queues.
 - **Privacy First**: Images are processed in-memory for verification and immediately discarded; they are never stored.
 
-### 🎯 Smart Matching System
+### Smart Matching System
 
 - **Gender-Based Matching**: Users can choose to match specifically with Male, Female, or Any gender.
 - **Priority Queues**: Verified users get priority in matchmaking.
 - **Cooldowns**: Prevents spamming and ensures fair usage.
 - **Past Match Avoidance**: The system intelligently avoids pairing you with the same person accurately.
 
-### 💬 Real-Time Chat
+### Real-Time Chat
 
 - **Instant Messaging**: Low-latency communication powered by Socket.IO.
 - **Typing Indicators**: See when your match is typing.
@@ -31,7 +31,7 @@ Ghosty is an anonymous chat application that pairs users for real-time conversat
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend**: React, TypeScript, TailwindCSS, Framer Motion
 - **Backend**: Node.js, Express, Socket.IO
@@ -40,7 +40,7 @@ Ghosty is an anonymous chat application that pairs users for real-time conversat
 
 ---
 
-## 🚀 Running Locally
+## Running Locally
 
 Follow these steps to get the application running on your local machine.
 
@@ -97,7 +97,7 @@ Open **http://localhost:5173** in your browser to use the app.
 
 ---
 
-## 🤝 Contribution
+## Contribution
 
 **Contributions are currently NOT accepted.**
 This project is currently in a closed development phase. Please do not submit Pull Requests as they will be closed.
