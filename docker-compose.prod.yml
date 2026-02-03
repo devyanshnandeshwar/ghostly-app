@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Foreground Nginx (Serves React + Proxies API)
+  client:
+    build: 
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    environment:
+      - VITE_BASE_PATH=/ghosty
+
+  # Backend API
+  server:
+    build: 
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongo:27017/ghostly
+      - REDIS_URI=redis://redis:6379
+      - AI_SERVICE_URL=http://ai-model:8000
+      - CLIENT_URL=http://localhost/ghosty
+      - NODE_ENV=production
+    depends_on:
+      - mongo
+      - redis
+      - ai-model
+
+  # AI Service
+  ai-model:
+    build: 
+      context: ./ai-model
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8000
+
+  # Infrastructure
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017" # Exposed for local debugging if needed

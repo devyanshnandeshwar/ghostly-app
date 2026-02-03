@@ -78,6 +78,14 @@ To run the full application locally, you will need to set up and run all three s
 6.  **Access the App:**
     Open your browser and navigate to `http://localhost:5173`.
 
-## Contributing
+    ```
+
+    ```
+
+## 🚀 Deployment
+
+For production deployment instructions using Fly.io, Docker, and Custom Domains, please read the **[Deployment Guide](./DEPLOYMENT.md)**.
+
+## 🤝 Contributing
 
 Please refer to the `README.md` in each subdirectory for specific contribution guidelines and development details.
