@@ -2,13 +2,27 @@
 FROM node:18-alpine as builder
 
 WORKDIR /app
-COPY package*.json ./
+
+# Copy shared module (needed for dependencies)
+COPY shared/package*.json ./shared/
+
+# Copy client package files
+COPY client/package*.json ./client/
+
+# Install dependencies
+WORKDIR /app/client
 RUN npm install
 
-COPY . .
+# Copy source code
+WORKDIR /app
+COPY shared/ ./shared/
+COPY client/ ./client/
+
 # Build argument for base path (needed for /ghosty subpath)
 ARG VITE_BASE_PATH=/ghosty
 ENV VITE_BASE_PATH=$VITE_BASE_PATH
+
+WORKDIR /app/client
 RUN npm run build
 
 # Stage 2: Serve

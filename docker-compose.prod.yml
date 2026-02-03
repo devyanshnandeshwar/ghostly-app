@@ -4,8 +4,8 @@ services:
   # Foreground Nginx (Serves React + Proxies API)
   client:
     build: 
-      context: ./client
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: client/Dockerfile
     ports:
       - "80:80"
     depends_on:
