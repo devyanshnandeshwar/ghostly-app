@@ -2,8 +2,6 @@ import { Server, Socket } from "socket.io";
 import { Server as HttpServer } from "http";
 import { config } from "../config/env";
 import { logger } from "../utils/logger";
-import { createAdapter } from "@socket.io/redis-adapter";
-import { redisClient, subClient } from "../config/redis";
 import { socketAuth } from "./auth.socket";
 import { matchSocketHandler } from "./match.socket";
 import { chatSocketHandler } from "./chat.socket";
@@ -27,9 +25,6 @@ export function initializeSocketIO(httpServer: HttpServer) {
             credentials: true
         }
     });
-
-    // Redis Adapter for Horizontal Scaling
-    io.adapter(createAdapter(redisClient, subClient));
 
     // Middlewares
     io.use(rateLimitMiddleware);
