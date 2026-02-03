@@ -231,5 +231,3 @@ The code was designed with scaling in mind (originally using Redis Adapters). Wh
 
 - **Graceful Degraded State**: If the AI Verification service goes down, the rest of the application (Chat, "Unverified" matchmaking) continues to function.
 - **Reconnection Logic**: The frontend handles network dips automatically, re-establishing socket connections without losing the session state.
-
----
