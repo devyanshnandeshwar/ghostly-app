@@ -38,6 +38,7 @@ flowchart TB
   - Face Detection (SSD Framework)
   - Gender Classification
 - **Nginx (`client/nginx.conf`)**: Serves the frontend and acts as a reverse proxy, routing `/api` and websocket requests to the backend.
+- **Shared (`/shared`)**: Contains TypeScript interfaces and contract types shared between the Client and Server to ensure type safety across the network boundary.
 
 ---
 
