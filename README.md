@@ -1,91 +1,103 @@
-# Ghostly
+# 👻 Ghosty
 
-Ghostly is an anonymous chatting platform that connects users based on interests, verifying their identity using AI-powered face and gender detection.
+Ghosty is an anonymous chat application that pairs users for real-time conversations based on gender and verification status. It leverages AI for authentic gender verification to ensure a safe and genuine user experience.
 
-## Project Structure
+## ✨ Features
 
-This repository is organized into three main components:
+### 🔒 Anonymous & Secure
 
-- **[client](./client/README.md)**: The frontend application built with React, Vite, and Tailwind CSS.
-- **[server](./server/README.md)**: The backend API and WebSocket server built with Node.js, Express, and Socket.io.
-- **[ai-model](./ai-model/README.md)**: The AI service for face and gender detection built with Python and FastAPI.
+- **No Sign-up Required**: Jump straight into chatting without creating an account.
+- **End-to-End Encryption**: Chats are encrypted, ensuring privacy.
+- **Ephemeral Sessions**: User sessions are temporary and data is not persisted after the session ends.
 
-## Getting Started
+### 🤖 AI-Powered Gender Verification
 
-To run the full application locally, you will need to set up and run all three services concurrently.
+- **Real-time Verification**: Uses a Deep Neural Network (DNN) based face detector and gender classification model to verify user gender via webcam.
+- **Anti-Spoofing**: Ensures users are real people before they can join specific queues.
+- **Privacy First**: Images are processed in-memory for verification and immediately discarded; they are never stored.
+
+### 🎯 Smart Matching System
+
+- **Gender-Based Matching**: Users can choose to match specifically with Male, Female, or Any gender.
+- **Priority Queues**: Verified users get priority in matchmaking.
+- **Cooldowns**: Prevents spamming and ensures fair usage.
+- **Past Match Avoidance**: The system intelligently avoids pairing you with the same person accurately.
+
+### 💬 Real-Time Chat
+
+- **Instant Messaging**: Low-latency communication powered by Socket.IO.
+- **Typing Indicators**: See when your match is typing.
+- **Connection Status**: Visual indicators for connection health and encryption status.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend**: React, TypeScript, TailwindCSS, Framer Motion
+- **Backend**: Node.js, Express, Socket.IO
+- **Database**: MongoDB (Session data), In-Memory Maps (Queues & Rate Limiting)
+- **AI Service**: Python, FastAPI/Uvicorn, OpenCV, Caffe Model
+
+---
+
+## 🚀 Running Locally
+
+Follow these steps to get the application running on your local machine.
 
 ### Prerequisites
 
 - Node.js (v18+)
-- Python (v3.8+)
-- MongoDB (local or Atlas)
-- Redis (v6+)
+- Python (v3.9+)
+- MongoDB Atlas URI
 
-### Quick Start
+### 1. Server (Backend)
 
-1.  **Clone the repository:**
+Navigate to the server directory and start the backend.
 
-    ```bash
-    git clone https://github.com/your-username/ghostly-app.git
-    cd ghostly-app
-    ```
+```bash
+cd server
+npm install
+npm run dev
+```
 
-2.  **Start Background Services:**
-    Ensure MongoDB and Redis are running.
+Runs on: `http://localhost:5000`
 
-    ```bash
-    # Linux/Mac
-    sudo service redis-server start
-    sudo service mongod start
-    ```
+### 2. AI Model service
 
-3.  **Setup the AI Model Service:**
+Navigate to the AI model directory to start the gender verification service.
 
-    ```bash
-    cd ai-model
-    python -m venv venv
-    source venv/bin/activate # On Windows: venv\Scripts\activate
-    pip install -r requirements.txt
-    uvicorn app.main:app --reload
-    ```
+```bash
+cd ai-model
+# Create virtual environment (optional)
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-    (Runs on port 8000)
+# Install dependencies
+pip install -r requirements.txt
 
-4.  **Setup the Server:**
-    Open a new terminal.
+# Start the service
+uvicorn app.main:app --reload --port 8000
+```
 
-    ```bash
-    cd server
-    npm install
-    cp .env.example .env # Configure your .env variables
-    npm run dev
-    ```
+Runs on: `http://localhost:8000`
 
-    (Runs on port 3000 by default)
+### 3. Client (Frontend)
 
-5.  **Setup the Client:**
-    Open a new terminal.
+Navigate to the client directory to start the user interface.
 
-    ```bash
-    cd client
-    npm install
-    cp .env.example .env # Configure your .env variables
-    npm run dev
-    ```
+```bash
+cd client
+npm install
+npm run dev
+```
 
-    (Runs on port 5173 by default)
+Runs on: `http://localhost:5173`
 
-6.  **Access the App:**
-    Open your browser and navigate to `http://localhost:5173`.
+Open **http://localhost:5173** in your browser to use the app.
 
-    ```
+---
 
-    ```
+## 🤝 Contribution
 
-## 🚀 Deployment
-
-For production deployment instructions using Fly.io, Docker, and Custom Domains, please read the **[Deployment Guide](./DEPLOYMENT.md)**.
-
-## 🤝 Contributing
-
-Please refer to the `README.md` in each subdirectory for specific contribution guidelines and development details.
+**Contributions are currently NOT accepted.**
+This project is currently in a closed development phase. Please do not submit Pull Requests as they will be closed.
