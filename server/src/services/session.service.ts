@@ -1,5 +1,5 @@
 import { UserSession } from "../models/UserSession";
-import { redisClient } from "../config/redis";
+// import { redisClient } from "../config/redis";
 import { logger } from "../utils/logger";
 
 export const initSession = async (deviceId: string) => {
@@ -20,32 +20,40 @@ export const initSession = async (deviceId: string) => {
     return session;
 };
 
-// Redis-based Daily Limit Logic
-// Key: ghosty:usage:{sessionId}:{YYYY-MM-DD}
-// TTL: 24 Hours + Buffer
+// In-Memory Storage for Single Instance Deployment
+// Map<sessionId, { count: number, date: string }>
+const dailyUsageMap = new Map<string, { count: number, date: string }>();
 
-function getDailyKey(sessionId: string): string {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    return `ghosty:usage:${sessionId}:${today}`;
+function getToday(): string {
+    return new Date().toISOString().split('T')[0];
 }
 
 export async function checkDailyLimit(sessionId: string): Promise<boolean> {
-    const key = getDailyKey(sessionId);
-    const count = await redisClient.get(key);
-    
+    const today = getToday();
+    const usage = dailyUsageMap.get(sessionId);
+
+    // Reset if date changed
+    if (usage && usage.date !== today) {
+        usage.count = 0;
+        usage.date = today;
+        return true; 
+    }
+
     // Limit is 5 free matches
-    if (count && parseInt(count) >= 5) {
+    if (usage && usage.count >= 5) {
         return false;
     }
     return true;
 }
 
 export async function incrementDailyUsage(sessionId: string) {
-    const key = getDailyKey(sessionId);
-    const multi = redisClient.multi();
-    
-    multi.incr(key);
-    multi.expire(key, 24 * 60 * 60 + 3600); // 25 Hours to be safe
-    
-    await multi.exec();
+    const today = getToday();
+    let usage = dailyUsageMap.get(sessionId);
+
+    if (!usage || usage.date !== today) {
+        usage = { count: 0, date: today };
+        dailyUsageMap.set(sessionId, usage);
+    }
+
+    usage.count++;
 }
