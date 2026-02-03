@@ -3,7 +3,11 @@ import { config } from "./env";
 import { logger } from "../utils/logger";
 
 // Create Redis Client (for general data & publishing)
-export const redisClient = new Redis(config.REDIS_URI || "redis://localhost:6379");
+const redisOptions = config.REDIS_URI.startsWith("rediss://") 
+    ? { tls: { rejectUnauthorized: false } } 
+    : {};
+
+export const redisClient = new Redis(config.REDIS_URI || "redis://localhost:6379", redisOptions);
 
 // Create Sub Client (specifically for Socket.IO Adapter)
 export const subClient = redisClient.duplicate();
