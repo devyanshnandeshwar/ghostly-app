@@ -9,6 +9,12 @@ export const chatSocketHandler = (io: Server, socket: Socket) => {
 
     // Chat Handlers
     socket.on("join-room", (roomId: string) => {
+        const activeMatch = socket.data.activeMatch;
+        if (!activeMatch || activeMatch.roomId !== roomId) {
+             logger.warn(`Unauthorized join attempt by ${socket.id} for room ${roomId}`);
+             return;
+        }
+
         socket.join(roomId);
         logger.debug(`User ${socket.id} joined room ${roomId}`);
     });

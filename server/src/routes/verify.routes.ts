@@ -5,7 +5,10 @@ import { verifyLimiter } from "../middlewares/rateLimit.middleware";
 import { verifyIdentity } from "../controllers/verify.controller";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 router.post(
     "/gender",

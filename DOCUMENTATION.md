@@ -59,6 +59,16 @@ To maintain queues and prevent abuse without requiring email/password, we use a 
   ```
 - **Benefit**: This allows a user to refresh the page and reconnect to their existing session/queue spot, while seemingly remaining "anonymous" (no PII collected).
 
+### Reporting & Abuse Prevention
+
+To maintain a safe environment, Ghosty implements a reporting system and validation checks:
+
+- **Reporting**: Users can report their chat partner via the UI.
+  - **Mechanism**: A `report-user` socket event is sent with a reason and description.
+  - **Action**: The server logs the report (persisted in MongoDB), immediately disconnects both users from the room, and notifies the reporter of the action.
+- **Validation**: Reports are only accepted from users in an active match with the target.
+- **DDoS Protection**: Application-level rate limiting (via `express-rate-limit`) prevents API abuse.
+
 ---
 
 ## 3. Operational Workflows
@@ -89,6 +99,44 @@ sequenceDiagram
     else No Match
         Q->>Q: Push User to Queue
         S-->>U: Event: "waiting"
+    end
+```
+
+### Real-time Chat Flow (Socket.IO + E2EE)
+
+Once matched, clients exchange messages directly via the server, which acts as a relay for encrypted packets.
+
+```mermaid
+sequenceDiagram
+    participant A as User A
+    participant S as Server
+    participant B as User B
+
+    Note over A, B: Start of encrypted session
+
+    A->>S: Event: "join-room" (RoomID)
+    B->>S: Event: "join-room" (RoomID)
+
+    rect rgb(20, 20, 20)
+        Note left of A: ECDH Key Generation
+        A->>S: Event: "exchange-key" (PublicKey A)
+        S->>B: Emit: "exchange-key" (PublicKey A)
+
+        Note right of B: ECDH Key Generation
+        B->>S: Event: "exchange-key" (PublicKey B)
+        S->>A: Emit: "exchange-key" (PublicKey B)
+
+        Note over A, B: Derivive Shared Secret (AES-GCM)
+    end
+
+    A->>A: Encrypt Message (IV + Ciphertext)
+    A->>S: Event: "send-message" { msg: Cipher, iv: IV }
+    S->>B: Emit: "receive-message" { msg: Cipher, iv: IV }
+    B->>B: Decrypt Message
+
+    opt Typing Indicators
+        B->>S: Event: "typing" (true)
+        S->>A: Emit: "partner-typing" (true)
     end
 ```
 
@@ -138,6 +186,42 @@ To ensure stability and availability, the system implements application-level Ra
 - Uses `express-rate-limit` middleware.
 - Limits the number of requests a single IP can make within a time window (e.g., 100 requests per 15 mins).
 - Protects API routes (`/api/*`) from abuse and brute-force attacks.
+
+### Known Limitations
+
+While the system enforces privacy and verification, there are known limitations in the current implementation:
+
+- **Virtual Camera / Spoofing**: The current verification system uses a static image analysis. It does not actively detect liveness or depth. Therefore, it is possible for sophisticated users to bypass the gender check using virtual camera software (e.g., OBS) or by presenting a high-quality photo/video to the webcam. This was a design choice to maximize device compatibility and minimize user friction during the MVP phase. Future iterations may include active liveness challenges (e.g., "turn head left") to mitigate this.
+
+- **Device ID Spoofing**: The system relies on a client-generated Device ID stored in `localStorage` for session persistence. Since this ID is not signed or encrypted by the server, it is possible for malicious users to manually modify their local storage to assume the identity of another user if they can obtain that user's UUID. A more secure approach using server-only Signed Cookies is planned for future releases.
+
+### Full System Communication (Client - Server - AI)
+
+The following diagram illustrates the complete interaction loop between the Client, the Node.js Server, and the Python AI Model during the verification phase.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server as Node.js Server
+    participant AI as AI Model (Python/FastAPI)
+
+    Note over Client: User takes photo
+    Client->>Server: POST /api/verify (FormData: Image)
+
+    Note over Server: Stream Handling
+    Server->>AI: POST /verify-gender (Stream)
+
+    Note over AI: 1. Receive Stream<br/>2. Bytes to Memory Array<br/>3. Face Detection (SSD)<br/>4. Gender Class. (Caffe)
+
+    alt Face Detected
+        AI-->>Server: JSON { gender: "female", confidence: 0.99 }
+        Server->>Server: Update Session (Verified=True)
+        Server-->>Client: 200 OK { success: true }
+    else No Face / Error
+        AI-->>Server: JSON { error: "No face detected" }
+        Server-->>Client: 422 Unprocessable Entity
+    end
+```
 
 ### Horizontal Scaling (Future Proofing)
 
