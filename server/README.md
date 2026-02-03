@@ -65,3 +65,8 @@ npm start
 - `src/models`: Mongoose schemas and models.
 - `src/routes`: API routes (if any separate from sockets).
 - `src/middleware`: Custom middleware (e.g., error handling, authentication).
+
+## Security Features
+
+- **DDoS Protection & Rate Limiting**: Implements `express-rate-limit` to prevent abuse and denial-of-service attacks.
+- **End-to-End Encryption Support**: Facilitates secure key exchange for Client-side E2EE (ECDH) without ever having access to the raw messages.

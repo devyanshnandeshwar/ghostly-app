@@ -140,9 +140,26 @@ sequenceDiagram
 
 ## 4. Additional Features
 
-### End-to-End Encryption (Projected)
+### End-to-End Encryption (Implemented)
 
-While the current implementation uses HTTPS/WSS for transport security, the architecture supports future Client-side E2EE using the `Diffie-Hellman` key exchange over the socket channel.
+The application implements full Client-side End-to-End Encryption (E2EE) data privacy.
+
+**Implementation:**
+
+- **Key Exchange**: Uses **ECDH (Elliptic-Curve Diffie-Hellman)**. When two users match, they exchange public keys via the socket server.
+- **Secret Derivation**: A shared secret is derived in the browser.
+- **Message Encryption**: Chats are encrypted using **AES-GCM** with the derived secret.
+- **Security Check**: The server transfers the envelopes but **cannot decrypt** the messages as it never possesses the private keys.
+
+### DDoS Protection & Rate Limiting
+
+To ensure stability and availability, the system implements application-level Rate Limiting.
+
+**Implementation:**
+
+- Uses `express-rate-limit` middleware.
+- Limits the number of requests a single IP can make within a time window (e.g., 100 requests per 15 mins).
+- Protects API routes (`/api/*`) from abuse and brute-force attacks.
 
 ### Horizontal Scaling (Future Proofing)
 

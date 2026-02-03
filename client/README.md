@@ -61,3 +61,7 @@ npm run preview
 - `src/context`: React Context providers for global state (Session, Match).
 - `src/lib`: Utility functions and helper classes.
 - `src/App.tsx`: Main application component and routing logic.
+
+## Security Features
+
+- **End-to-End Encryption**: Implements Client-side key generation (ECDH) and message encryption (AES-GCM) `src/hooks/useChatHook.ts`. Messages are encrypted before leaving the browser.
