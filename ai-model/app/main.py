@@ -23,4 +23,4 @@ def health_check():
 
 @app.get("/")
 def root():
-    return {"message": "Ghostly AI Service is Running"}
+    return {"message": "Ghosty AI Service is Running"}
