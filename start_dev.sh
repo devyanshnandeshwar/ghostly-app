@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Ghosty Startup Script
-# Opens 4 terminals: Client, Server, AI Model, and a working terminal
+# Opens 3 terminals: Client, Server, and AI Model
 
 PROJECT_ROOT=$(pwd)
 
@@ -13,6 +13,6 @@ gnome-terminal --title="Ghosty Server" -- bash -c "cd server; npm run dev; exec 
 
 gnome-terminal --title="Ghosty Client" -- bash -c "cd client; npm run dev; exec bash"
 
-gnome-terminal --title="Ghosty Terminal" -- bash -c "cd \"$PROJECT_ROOT\"; echo 'Ready for commands...'; exec bash"
+
 
 echo "All services launched in separate terminals."

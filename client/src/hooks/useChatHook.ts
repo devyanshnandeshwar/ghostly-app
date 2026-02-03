@@ -27,6 +27,7 @@ export function useChat(roomId: string | null) {
         setMessages([]);
         setIsEncrypted(false);
         setSharedKey(null);
+        setPartnerKey(null);
         // We don't nullify keyPair here because we're about to set it, 
         // and we want to avoid extra effect triggers if possible. 
         // But logic below generates new keys anyway.
@@ -60,15 +61,32 @@ export function useChat(roomId: string | null) {
 
     }, [roomId, socket]);
     
-    // Derived Key Effect
-    useEffect(() => {
-        if (!socket || !keyPair) return;
+    const [partnerKey, setPartnerKey] = useState<JsonWebKey | null>(null);
 
-        const handleExchange = async (partnerKeyJwk: JsonWebKey) => {
+    // Listen for partner key - Decoupled from local key generation to prevent race conditions
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleExchange = (key: JsonWebKey) => {
+            console.log("[E2EE] Received partner key");
+            setPartnerKey(key);
+        };
+
+        socket.on("exchange-key", handleExchange);
+        
+        return () => {
+            socket.off("exchange-key", handleExchange);
+        };
+    }, [socket]);
+
+    // Derive Shared Key
+    useEffect(() => {
+        if (!keyPair || !partnerKey) return;
+
+        const derive = async () => {
             try {
-                console.log("[E2EE] Received partner key");
-                const partnerKey = await importKey(partnerKeyJwk);
-                const shared = await deriveSharedKey(keyPair.privateKey, partnerKey);
+                const partnerKeyImported = await importKey(partnerKey);
+                const shared = await deriveSharedKey(keyPair.privateKey, partnerKeyImported);
                 setSharedKey(shared);
                 setIsEncrypted(true);
                 console.log("[E2EE] Secure connection established 🔒");
@@ -77,12 +95,8 @@ export function useChat(roomId: string | null) {
             }
         };
 
-        socket.on("exchange-key", handleExchange);
-        
-        return () => {
-            socket.off("exchange-key", handleExchange);
-        };
-    }, [keyPair, socket]);
+        derive();
+    }, [keyPair, partnerKey]);
 
     // Message Handler Effect (depends on sharedKey)
     useEffect(() => {
