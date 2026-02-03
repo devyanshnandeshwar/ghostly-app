@@ -4,28 +4,7 @@ This document provides a detailed technical overview of the Ghosty application, 
 
 ## 1. System Architecture
 
-Ghosty follows a microservices-inspired architecture containerized with Docker, ensuring easy scalability and deployment.
-
-### Component Diagram
-
-```mermaid
-flowchart TB
- subgraph Infrastructure["Infrastructure (EC2 / Docker Host)"]
-        Nginx["Nginx Reverse Proxy"]
-        Client["React Client Container"]
-        Server["Node.js Backend Container"]
-        AI["Python AI Service Container"]
-  end
- subgraph Cloud["External Cloud Services"]
-        Atlas[("MongoDB Atlas")]
-  end
-    User["User Browser"] -- HTTPS / WSS --> Nginx
-    Nginx -- Static Assets --> Client
-    Nginx -- "/api & /socket.io" --> Server
-    Server -- Session Data --> Atlas
-    Server -- Verify Image --> AI
-    Server -- Stores --> Queues["In-Memory Queues"]
-```
+Ghosty follows a microservices-inspired architecture derived by local services, ensuring easy scalability and development.
 
 ### Services Breakdown
 
@@ -37,7 +16,6 @@ flowchart TB
 - **AI Service (`/ai-model`)**: A FastAPI Python service running a Caffe Deep Learning model (OpenCV DNN) for:
   - Face Detection (SSD Framework)
   - Gender Classification
-- **Nginx (`client/nginx.conf`)**: Serves the frontend and acts as a reverse proxy, routing `/api` and websocket requests to the backend.
 - **Shared (`/shared`)**: Contains TypeScript interfaces and contract types shared between the Client and Server to ensure type safety across the network boundary.
 
 ---
