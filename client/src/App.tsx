@@ -64,15 +64,8 @@ function App() {
     <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-background text-foreground">
       <Navbar onLogoClick={() => {
           cancelMatch();
-          setShowLanding(true); // Return to Marketing Landing Page
+          setShowLanding(true);
       }} />
-
-      {/* Background Ambient Effects */}
-      {/* Background Ambient Effects - REMOVED */}
-      {/* <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px]" />
-      </div> */}
 
       <div className="z-10 w-full max-w-5xl mx-auto py-2 px-2 sm:py-4 sm:px-4 flex justify-center flex-1 items-center">
           {showLanding ? (

@@ -28,7 +28,6 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reports", reportRoutes);
 
-// Health check
 app.get("/health", (_, res) => {
     res.json({ status: "OK" });
 });
