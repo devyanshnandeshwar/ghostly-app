@@ -41,8 +41,8 @@ Thumbs.db
 server/dist/
 client/dist/
 shared/dist/
-ai-model/gender_net.caffemodel
-ai-model/opencv_face_detector_uint8.pb
+# ai-model/gender_net.caffemodel
+# ai-model/opencv_face_detector_uint8.pb
 
 # Deployment docs
 hosting/
