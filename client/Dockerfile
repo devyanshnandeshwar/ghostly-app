@@ -29,6 +29,8 @@ ARG VITE_SOCKET_URL
 ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
 
 WORKDIR /app/client
+# Remove local .env file so arguments take precedence
+RUN rm -f .env
 RUN npm run build
 
 # Stage 2: Serve
