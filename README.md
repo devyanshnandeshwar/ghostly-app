@@ -1,6 +1,6 @@
-# Ghosty
+# Ghostly
 
-Ghosty is an anonymous chat application that pairs users for real-time conversations based on gender and verification status. It leverages AI for authentic gender verification to ensure a safe and genuine user experience.
+Ghostly is an anonymous chat application that pairs users for real-time conversations based on gender and verification status. It leverages AI for authentic gender verification to ensure a safe and genuine user experience.
 
 ## Features
 
