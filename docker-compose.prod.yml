@@ -6,6 +6,8 @@ services:
       dockerfile: client/Dockerfile
       args:
         - VITE_BASE_PATH=/ghosty
+        - VITE_API_URL=/ghosty/api
+        - VITE_SOCKET_URL=/
     ports:
       - "80:80"
     restart: always
