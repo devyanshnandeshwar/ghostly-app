@@ -7,7 +7,7 @@ This directory contains the frontend application for Ghostly, built with React a
 - **Framework**: [React](https://react.dev/) + [Vite](https://vitejs.dev/)
 - **Language**: TypeScript
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **UI Components**: [Radix UI](https://www.radix-ui.com/), [Lucide React](https://lucide.dev/) (Icons)
+- **UI Components**: [Shadcn UI](https://ui.shadcn.com/) (built on [Radix UI](https://www.radix-ui.com/)), [Lucide React](https://lucide.dev/) (Icons)
 - **State Management**: React Context (SessionContext, MatchContext)
 - **Networking**: [Axios](https://axios-http.com/), [Socket.io-client](https://socket.io/docs/v4/client-api/)
 
