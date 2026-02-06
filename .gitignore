@@ -46,3 +46,6 @@ shared/dist/
 
 # Deployment docs
 hosting/
+
+# Local Demo Scripts
+DEMO_SCRIPT.md
