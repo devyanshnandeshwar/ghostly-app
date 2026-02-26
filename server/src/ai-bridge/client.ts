@@ -1,21 +1,29 @@
 import axios from "axios";
 import FormData from "form-data";
+import http from "http";
 import { logger } from "../utils/logger";
 
 const AI_SERVICE_URL = "http://localhost:8000/api/verify-gender";
+
+// Use a keep-alive HTTP agent to reuse TCP connections
+// This significantly reduces the latency of repeated requests to the AI service
+const httpAgent = new http.Agent({ keepAlive: true });
+
+const aiClient = axios.create({
+    httpAgent,
+    timeout: 5000, // 5s timeout
+});
 
 export async function verifyGender(imageBuffer: Buffer) {
     try {
         const form = new FormData();
         form.append("image", imageBuffer, { filename: "upload.jpg" });
 
-        const response = await axios.post(AI_SERVICE_URL, form, {
+        const response = await aiClient.post(AI_SERVICE_URL, form, {
             headers: {
                 ...form.getHeaders()
-            },
-            timeout: 5000, // 5s timeout
+            }
         });
-
 
         return {
             gender: response.data.gender,
@@ -36,11 +44,10 @@ export async function verifyGender(imageBuffer: Buffer) {
             const formRetry = new FormData();
             formRetry.append("image", imageBuffer, { filename: "retry.jpg" });
 
-            const responseRetry = await axios.post(AI_SERVICE_URL, formRetry, {
+            const responseRetry = await aiClient.post(AI_SERVICE_URL, formRetry, {
                 headers: {
                     ...formRetry.getHeaders()
-                },
-                timeout: 5000,
+                }
             });
 
              return {
