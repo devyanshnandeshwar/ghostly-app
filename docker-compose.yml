@@ -35,14 +35,8 @@ services:
       dockerfile: server/Dockerfile
     container_name: ghostly-server
     restart: unless-stopped
-    environment:
-      PORT: 5000
-      MONGO_URI: mongodb://mongo:27017/ghostly
-      REDIS_URI: redis://redis:6379
-      CLIENT_URL: http://localhost
-      NODE_ENV: production
-      SESSION_SECRET: change_me_in_production
-      AI_MODEL_URL: http://ai-model:8000/api/verify-gender
+    env_file:
+      - .env.production
     ports:
       - "5000:5000"
     depends_on:
