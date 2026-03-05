@@ -1,8 +1,10 @@
 import rateLimit from "express-rate-limit";
 
-// Key generator using Device ID header or body
+// Key generator using Device ID header or body (defensive for requests without a body)
 const keyGenerator = (req: any) => {
-    return req.headers["x-device-id"] || req.body.deviceId || req.ip || "unknown";
+    const headerDeviceId = req.headers["x-device-id"];
+    const bodyDeviceId = req.body && typeof req.body === "object" ? req.body.deviceId : undefined;
+    return headerDeviceId || bodyDeviceId || req.ip || "unknown";
 };
 
 export const verifyLimiter = rateLimit({

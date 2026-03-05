@@ -3,7 +3,8 @@ import FormData from "form-data";
 import http from "http";
 import { logger } from "../utils/logger";
 
-const AI_SERVICE_URL = "http://localhost:8000/api/verify-gender";
+const AI_SERVICE_URL =
+    process.env.AI_MODEL_URL || "http://localhost:8000/api/verify-gender";
 
 // Use a keep-alive HTTP agent to reuse TCP connections
 // This significantly reduces the latency of repeated requests to the AI service
