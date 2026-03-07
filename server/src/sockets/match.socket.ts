@@ -20,7 +20,7 @@ export const matchSocketHandler = (io: Server, socket: Socket) => {
                 return;
             }
 
-            // Freemium Limits Logic (Redis)
+            // Freemium Limits Logic
             if (currentSession.preference !== "any") {
                 const isAllowed = await checkDailyLimit(currentSession._id.toString());
                 if (!isAllowed) {
@@ -168,7 +168,6 @@ async function updateMatchHistory(id1: string, id2: string) {
 async function updateUsage(user: any) {
      if (user.preference !== "any") {
         logger.info(`[Usage Limit] Incrementing usage for ${user.nickname} (${user.sessionId}) due to preference: ${user.preference}`);
-        // Redis Increment
         await incrementDailyUsage(user.sessionId);
         
         // DB Persistence (for analytics)

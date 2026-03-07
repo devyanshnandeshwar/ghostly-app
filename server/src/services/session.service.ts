@@ -1,5 +1,4 @@
 import { UserSession } from "../models/UserSession";
-// import { redisClient } from "../config/redis";
 import { logger } from "../utils/logger";
 
 export const initSession = async (deviceId: string) => {
