@@ -51,8 +51,8 @@ services:
       context: .
       dockerfile: client/Dockerfile
       args:
-        VITE_API_URL: http://localhost:5000/api
-        VITE_SOCKET_URL: http://localhost:5000
+        VITE_API_URL: /api
+        VITE_SOCKET_URL: ""
         VITE_BASE_PATH: /ghostly
     container_name: ghostly-client
     restart: unless-stopped

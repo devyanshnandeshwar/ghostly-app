@@ -17,7 +17,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     useEffect(() => {
         if (session?.deviceId) {
-            const socketInstance = socketService.connect("http://localhost:5000", session.deviceId);
+            // In deployment we proxy Socket.IO through nginx, so same-origin works.
+            const socketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
+            const socketInstance = socketService.connect(socketUrl, session.deviceId);
             setSocket(socketInstance);
 
             const onConnect = () => setIsConnected(true);
