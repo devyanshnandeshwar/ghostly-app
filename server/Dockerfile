@@ -18,6 +18,7 @@ RUN npm ci || npm install || true
 
 WORKDIR /app/server
 RUN npm run build
+RUN npm prune --omit=dev
 
 # --- Production image ---
 FROM node:20-alpine
