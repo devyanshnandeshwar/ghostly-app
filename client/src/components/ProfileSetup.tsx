@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import DOMPurify from "dompurify";
 
 interface ProfileSetupProps {
     onComplete: () => void;
@@ -30,8 +31,8 @@ export function ProfileSetup({ onComplete }: ProfileSetupProps) {
 
         try {
             await api.post("/profile/update", {
-                nickname,
-                bio,
+                nickname: DOMPurify.sanitize(nickname),
+                bio: DOMPurify.sanitize(bio),
                 preference
             }, {
                 headers: { "X-Device-Id": getDeviceId() }

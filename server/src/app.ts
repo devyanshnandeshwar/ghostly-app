@@ -11,6 +11,7 @@ import reportRoutes from "./routes/reports.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 import { globalLimiter } from "./middlewares/rateLimit.middleware";
 import { config } from "./config/env";
+import { xssMiddleware } from "./middlewares/xss.middleware";
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "DELETE"]
 }));
 app.use(express.json());
+app.use(xssMiddleware);
 app.use(globalLimiter);
 app.use("/api/session", sessionRoutes);
 app.use("/api/verify", verifyRoutes);
