@@ -24,8 +24,8 @@ services:
       dockerfile: ai-model/Dockerfile
     container_name: ghostly-ai
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     networks:
       - ghostly-net
 
@@ -37,8 +37,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
-    ports:
-      - "5000:5000"
+    expose:
+      - "5000"
     depends_on:
       - mongo
       - redis
