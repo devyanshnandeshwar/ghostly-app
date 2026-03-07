@@ -1,11 +1,12 @@
 
 import { useSession } from "./context/SessionContext";
 import { useMatch } from "./context/MatchContext";
-import { Verify } from "./components/Verify";
-import Chat from "./components/Chat";
-import { ProfileSetup } from "./components/ProfileSetup";
 import { LandingPage } from "./components/LandingPage";
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
+
+const Verify = lazy(() => import("./components/Verify").then(module => ({ default: module.Verify })));
+const Chat = lazy(() => import("./components/Chat"));
+const ProfileSetup = lazy(() => import("./components/ProfileSetup").then(module => ({ default: module.ProfileSetup })));
 import { Ghost, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "./components/Navbar";
@@ -72,18 +73,24 @@ function App() {
               <LandingPage onStart={() => setShowLanding(false)} />
           ) : (!profileComplete && (!session?.nickname || session.nickname === "Anonymous")) ? (
               <div className="w-full animate-in fade-in slide-in-from-right-8 duration-500">
-                <ProfileSetup onComplete={handleProfileComplete} />
+                <Suspense fallback={<Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />}>
+                  <ProfileSetup onComplete={handleProfileComplete} />
+                </Suspense>
               </div>
           ) : (!verified && !session?.isVerified) ? (
               <div className="w-full animate-in fade-in slide-in-from-right-8 duration-500">
-                <Verify onVerified={handleVerified} />
+                <Suspense fallback={<Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />}>
+                  <Verify onVerified={handleVerified} />
+                </Suspense>
               </div>
           ) : (status === "matched" && roomId) ? (
               <div className="w-full animate-in zoom-in-95 fade-in duration-300">
-                <Chat
-                    roomId={roomId}
-                    partner={partner}
-                />
+                <Suspense fallback={<Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />}>
+                  <Chat
+                      roomId={roomId}
+                      partner={partner}
+                  />
+                </Suspense>
               </div>
           ) : (
             <HomeCard status={status} onFindMatch={findMatch} />

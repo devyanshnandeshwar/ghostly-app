@@ -97,6 +97,19 @@ Open **http://localhost:5173** in your browser to use the app.
 
 ---
 
+## Deploying with Docker
+
+The application is fully containerized and uses Docker Compose for simple orchestration of all 5 services involved (MongoDB, Redis, AI-Model, Server, Client).
+
+```bash
+docker-compose build
+docker-compose up -d
+```
+
+This will run the entire application stack locally or in your deployment environment without needing manual dependency installation.
+
+---
+
 ## Contribution
 
 **Contributions are currently NOT accepted.**
