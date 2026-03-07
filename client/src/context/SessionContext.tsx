@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import axios from "axios";
+import api from "../services/client";
 
 interface Session {
     _id: string;
@@ -42,7 +42,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 localStorage.setItem("deviceId", deviceId);
             }
 
-            const response = await axios.post("http://localhost:5000/api/session/init", { deviceId });
+            const response = await api.post("/session/init", { deviceId });
             setSession(response.data);
         } catch (error) {
             console.error("Session init failed:", error);
