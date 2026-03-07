@@ -10,13 +10,14 @@ import adminRoutes from "./routes/admin.routes";
 import reportRoutes from "./routes/reports.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 import { globalLimiter } from "./middlewares/rateLimit.middleware";
+import { config } from "./config/env";
 
 const app = express();
 
 app.use(helmet());
 app.use(compression());
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: config.CORS_ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"]
 }));
