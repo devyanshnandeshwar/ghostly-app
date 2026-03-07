@@ -7,14 +7,14 @@ COPY shared/ ./shared/
 COPY server/package*.json ./server/
 
 WORKDIR /app/server
-RUN npm install
+RUN npm ci || npm install && npm cache clean --force
 
 COPY server/ .
 
 # Build shared first, then server
 WORKDIR /app/shared
 COPY shared/package*.json ./
-RUN npm install || true
+RUN npm ci || npm install || true
 
 WORKDIR /app/server
 RUN npm run build

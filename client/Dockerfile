@@ -7,7 +7,7 @@ COPY shared/ ./shared/
 
 WORKDIR /app/client
 COPY client/package*.json ./
-RUN npm install
+RUN npm ci || npm install && npm cache clean --force
 
 COPY client/ .
 
