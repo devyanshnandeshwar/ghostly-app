@@ -20,7 +20,7 @@ interface SocketData {
 export function initializeSocketIO(httpServer: HttpServer) {
     const io = new Server<ClientToServerEvents, ServerToClientEvents, {}, SocketData>(httpServer, {
         cors: {
-            origin: config.CLIENT_URL,
+            origin: config.CORS_ORIGINS,
             methods: ["GET", "POST"],
             credentials: true
         }
