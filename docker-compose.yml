@@ -11,12 +11,6 @@ services:
     networks:
       - ghostly-net
 
-  redis:
-    image: redis:7-alpine
-    container_name: ghostly-redis
-    restart: unless-stopped
-    networks:
-      - ghostly-net
 
   ai-model:
     build:
@@ -41,7 +35,6 @@ services:
       - "5000"
     depends_on:
       - mongo
-      - redis
       - ai-model
     networks:
       - ghostly-net

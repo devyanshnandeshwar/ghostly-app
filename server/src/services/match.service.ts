@@ -1,7 +1,5 @@
 import { QueueUser, Gender } from "@shared/types/User";
 import { logger } from "../utils/logger";
-// import { redisClient } from "../config/redis";
-
 // In-Memory Storage for Single Instance
 const queues = new Map<string, QueueUser[]>();
 const cooldowns = new Map<string, number>();
@@ -18,7 +16,7 @@ const queueKeys = [
 
 queueKeys.forEach(key => queues.set(key, []));
 
-// Redis Key Constants (Kept for internal naming consistency if needed, though Maps use them directly)
+// Queue Key Constants
 const QUEUE_PREFIX = "ghosty:queue";
 
 function getQueueKey(gender: string, preference: string): string {

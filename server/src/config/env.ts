@@ -17,7 +17,6 @@ const clientUrl = process.env.CLIENT_URL || defaultClientUrl;
 export const config = {
     PORT: process.env.PORT || 5000,
     MONGO_URI: process.env.MONGO_URI || "mongodb://localhost:27017/ghostly",
-    REDIS_URI: process.env.REDIS_URI || "redis://localhost:6379",
     CLIENT_URL: clientUrl,
     CORS_ORIGINS: [clientUrl, "http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"].filter(
         (origin, i, arr) => arr.indexOf(origin) === i
