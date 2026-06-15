@@ -19,40 +19,34 @@ export const initSession = async (deviceId: string) => {
     return session;
 };
 
-// In-Memory Storage for Single Instance Deployment
-// Map<sessionId, { count: number, date: string }>
-const dailyUsageMap = new Map<string, { count: number, date: string }>();
+import { redisClient } from "../config/redis";
 
-function getToday(): string {
-    return new Date().toISOString().split('T')[0];
+function getDailyUsageKey(sessionId: string): string {
+    return `daily_usage:${sessionId}`;
+}
+
+function getSecondsUntilEndOfDay(): number {
+    const now = new Date();
+    const eod = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return Math.floor((eod.getTime() - now.getTime()) / 1000);
 }
 
 export async function checkDailyLimit(sessionId: string): Promise<boolean> {
-    const today = getToday();
-    const usage = dailyUsageMap.get(sessionId);
+    const key = getDailyUsageKey(sessionId);
+    const count = await redisClient.get(key);
 
-    // Reset if date changed
-    if (usage && usage.date !== today) {
-        usage.count = 0;
-        usage.date = today;
-        return true; 
-    }
-
-    // Limit is 5 free matches
-    if (usage && usage.count >= 5) {
+    if (count && parseInt(count, 10) >= 5) {
         return false;
     }
     return true;
 }
 
 export async function incrementDailyUsage(sessionId: string) {
-    const today = getToday();
-    let usage = dailyUsageMap.get(sessionId);
-
-    if (!usage || usage.date !== today) {
-        usage = { count: 0, date: today };
-        dailyUsageMap.set(sessionId, usage);
+    const key = getDailyUsageKey(sessionId);
+    const result = await redisClient.incr(key);
+    
+    // Set expiry if it's the first increment
+    if (result === 1) {
+        await redisClient.expire(key, getSecondsUntilEndOfDay());
     }
-
-    usage.count++;
 }

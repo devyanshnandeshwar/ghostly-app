@@ -1,36 +1,27 @@
 import { QueueUser, Gender } from "@shared/types/User";
 import { logger } from "../utils/logger";
-// In-Memory Storage for Single Instance
-const queues = new Map<string, QueueUser[]>();
-const cooldowns = new Map<string, number>();
-
-// Queues initialization
-const queueKeys = [
-    "ghosty:queue:male:male",
-    "ghosty:queue:male:female",
-    "ghosty:queue:male:any",
-    "ghosty:queue:female:male",
-    "ghosty:queue:female:female",
-    "ghosty:queue:female:any"
-];
-
-queueKeys.forEach(key => queues.set(key, []));
+import { redisClient } from "../config/redis";
 
 // Queue Key Constants
 const QUEUE_PREFIX = "ghosty:queue";
+const COOLDOWN_PREFIX = "ghosty:cooldown";
 
 function getQueueKey(gender: string, preference: string): string {
     return `${QUEUE_PREFIX}:${gender}:${preference}`;
+}
+
+function getCooldownKey(sessionId: string): string {
+    return `${COOLDOWN_PREFIX}:${sessionId}`;
 }
 
 export async function addToQueue(newUser: QueueUser) {
     const { sessionId, gender, preference } = newUser;
 
     // 1. Check Cooldown
-    const expiry = cooldowns.get(sessionId);
-    if (expiry && expiry > Date.now()) {
-        const remaining = Math.ceil((expiry - Date.now()) / 1000);
-        return { error: "cooldown", remaining };
+    const cooldownKey = getCooldownKey(sessionId);
+    const ttl = await redisClient.ttl(cooldownKey);
+    if (ttl > 0) {
+        return { error: "cooldown", remaining: ttl };
     }
 
     // 2. Search for Match
@@ -62,23 +53,16 @@ export async function addToQueue(newUser: QueueUser) {
 
     // 3. Try to POP a match
     for (const queueKey of queuesToCheck) {
-        const queue = queues.get(queueKey);
-        if (!queue || queue.length === 0) continue;
+        const candidatesRaw = await redisClient.lRange(queueKey, 0, 4);
+        if (!candidatesRaw || candidatesRaw.length === 0) continue;
 
-        // Iterate to find a valid match (checking past matches)
-        // In-memory allows us to peek and splice easily!
-        for (let i = 0; i < queue.length; i++) {
-             // We only check the first few to maintain "Queue" order, or scan all?
-             // Scanning all is O(N) but better for user experience. 
-             // Let's scan up to 5 candidates.
-             if (i >= 5) break;
-
-             const candidate = queue[i];
+        for (let i = 0; i < candidatesRaw.length; i++) {
+             const candidateRaw = candidatesRaw[i];
+             const candidate: QueueUser = JSON.parse(candidateRaw);
 
              // Check collision with Self
              if (candidate.sessionId === sessionId) {
-                 queue.splice(i, 1); // Remove stale self
-                 i--; // Adjustment
+                 await redisClient.lRem(queueKey, 1, candidateRaw); // Remove stale self
                  continue;
              }
 
@@ -87,56 +71,51 @@ export async function addToQueue(newUser: QueueUser) {
                  continue; // Skip this candidate, try next
              }
 
-             // FOUND VALID MATCH
-             // Remove candidate from queue
-             queue.splice(i, 1); 
+             // FOUND VALID MATCH - Try to claim atomically
+             const removedCount = await redisClient.lRem(queueKey, 1, candidateRaw);
+             if (removedCount === 1) {
+                 // Successfully claimed
+                 await redisClient.del(cooldownKey);
+                 await redisClient.del(getCooldownKey(candidate.sessionId));
 
-             // Clear cooldowns
-             cooldowns.delete(sessionId);
-             cooldowns.delete(candidate.sessionId);
-
-             return {
-                 user1: newUser,
-                 user2: candidate
-             };
+                 return {
+                     user1: newUser,
+                     user2: candidate
+                 };
+             }
+             // If removedCount is 0, someone else claimed them first! Try next candidate.
         }
     }
 
     // 4. No Match Found -> Enqueue Myself
     const myQueueKey = getQueueKey(gender, preference);
-    const myQueue = queues.get(myQueueKey);
     
-    if (myQueue) {
-        // Prevent strictly duplicate sessions
-        const existingIndex = myQueue.findIndex(u => u.sessionId === sessionId);
-        if (existingIndex !== -1) {
-            myQueue.splice(existingIndex, 1);
+    // Remove existing entry to prevent duplicates
+    const allMyEntriesRaw = await redisClient.lRange(myQueueKey, 0, -1);
+    for (const entryRaw of allMyEntriesRaw) {
+        const entry: QueueUser = JSON.parse(entryRaw);
+        if (entry.sessionId === sessionId) {
+            await redisClient.lRem(myQueueKey, 1, entryRaw);
         }
-        myQueue.push(newUser);
     }
-    
+
+    await redisClient.rPush(myQueueKey, JSON.stringify(newUser));
     return null;
 }
 
 export async function removeFromQueue(socketId: string) {
-    // Scan all queues and remove by socketId/sessionId logic if user object isn't passed.
-    // Ideally we pass User, but for safety scan all.
-    for (const queue of queues.values()) {
-        // We assume socketId mapping might be tricky if SessionId is used in User object.
-        // But usually we can filter if we knew SessionId. 
-        // NOTE: The previous code didn't implement this fully either.
-        // We will skip implementing "remove by socketId" if we don't have sessionId map.
-        // However, `removeUserFromQueue` is the main one used.
-    }
+    // Scan all queues and remove by socketId logic is too expensive in Redis without a reverse index.
+    // However, removeUserFromQueue is the main one used.
 }
 
 export async function removeUserFromQueue(user: QueueUser) {
     const queueKey = getQueueKey(user.gender, user.preference);
-    const queue = queues.get(queueKey);
-    if (queue) {
-        const idx = queue.findIndex(u => u.sessionId === user.sessionId);
-        if (idx !== -1) {
-            queue.splice(idx, 1);
+    
+    const allEntriesRaw = await redisClient.lRange(queueKey, 0, -1);
+    for (const entryRaw of allEntriesRaw) {
+        const entry: QueueUser = JSON.parse(entryRaw);
+        if (entry.sessionId === user.sessionId) {
+            await redisClient.lRem(queueKey, 1, entryRaw);
         }
     }
     
@@ -146,5 +125,5 @@ export async function removeUserFromQueue(user: QueueUser) {
 
 export async function setCooldown(sessionId: string) {
     // 30 Seconds Cooldown
-    cooldowns.set(sessionId, Date.now() + 30000);
+    await redisClient.setEx(getCooldownKey(sessionId), 30, "1");
 }

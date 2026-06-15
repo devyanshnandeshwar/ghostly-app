@@ -6,6 +6,7 @@ import { connectDB } from "./config/db";
 import { initializeSocketIO } from "./sockets/socketManager";
 import { logger } from "./utils/logger";
 import { config } from "./config/env";
+import { connectRedis, redisClient } from "./config/redis";
 
 const PORT = config.PORT;
 
@@ -15,6 +16,7 @@ const server = http.createServer(app);
 const io = initializeSocketIO(server);
 
 async function start() {
+    await connectRedis();
     await connectDB();
 
     server.listen(PORT, () => {
@@ -38,6 +40,11 @@ const shutdown = async () => {
         logger.info("[Server] MongoDB disconnected");
     } catch (err) {
         logger.error("[Server] Error disconnecting MongoDB", err);
+    }
+    
+    if (redisClient.isOpen) {
+        await redisClient.disconnect();
+        logger.info("[Server] Redis disconnected");
     }
     
     process.exit(0);

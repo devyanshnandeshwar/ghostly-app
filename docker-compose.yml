@@ -11,6 +11,15 @@ services:
     networks:
       - ghostly-net
 
+  redis:
+    image: redis:7-alpine
+    container_name: ghostly-redis
+    restart: unless-stopped
+    expose:
+      - "6379"
+    networks:
+      - ghostly-net
+
 
   ai-model:
     build:
@@ -36,6 +45,7 @@ services:
     depends_on:
       - mongo
       - ai-model
+      - redis
     networks:
       - ghostly-net
 
@@ -46,7 +56,7 @@ services:
       args:
         VITE_API_URL: /api
         VITE_SOCKET_URL: ""
-        VITE_BASE_PATH: /ghostly
+        VITE_BASE_PATH: /
     container_name: ghostly-client
     restart: unless-stopped
     ports:

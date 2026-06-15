@@ -46,26 +46,29 @@ export function initializeSocketIO(httpServer: HttpServer) {
     return io;
 }
 
-const rateLimitMap = new Map<string, { count: number, start: number }>();
+import { redisClient } from "../config/redis";
 
-function rateLimitMiddleware(socket: Socket, next: (err?: Error) => void) {
+async function rateLimitMiddleware(socket: Socket, next: (err?: Error) => void) {
     const ip = socket.handshake.address || "unknown";
-    const now = Date.now();
     const LIMIT = 20; 
     const WINDOW_MS = 60000;
     
-    let record = rateLimitMap.get(ip);
+    const key = `rate_limit:${ip}`;
     
-    if (!record || now - record.start > WINDOW_MS) {
-            record = { count: 0, start: now };
-            rateLimitMap.set(ip, record);
-    }
-    
-    if (record.count >= LIMIT) {
+    try {
+        const count = await redisClient.incr(key);
+        if (count === 1) {
+            await redisClient.expire(key, Math.floor(WINDOW_MS / 1000));
+        }
+        
+        if (count > LIMIT) {
             logger.warn(`Rate limit blocked IP: ${ip}`);
             return next(new Error("Too many connection attempts."));
+        }
+        
+        next();
+    } catch (error) {
+        logger.error(`Redis rate limit error: ${error}`);
+        next(); // allow connection on redis failure
     }
-    
-    record.count++;
-    next();
 }
