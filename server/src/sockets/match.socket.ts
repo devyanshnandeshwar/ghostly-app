@@ -113,6 +113,7 @@ function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
     
     // Clear Active Match Data immediately to prevent double processing
     socket.data.activeMatch = null;
+    socket.data.publicKey = null;
 
     if (activeMatch) {
         const { roomId, partnerSessionId } = activeMatch;
@@ -128,6 +129,7 @@ function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
                 if (s) {
                     s.leave(roomId);
                     s.data.activeMatch = null;
+                    s.data.publicKey = null;
                 }
             }
         }

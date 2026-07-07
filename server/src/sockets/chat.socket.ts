@@ -4,7 +4,21 @@ import { logger } from "../utils/logger";
 export const chatSocketHandler = (io: Server, socket: Socket) => {
     // E2EE Key Exchange
     socket.on("exchange-key", ({ roomId, key }: { roomId: string, key: JsonWebKey }) => {
+        socket.data.publicKey = key;
         socket.to(roomId).emit("exchange-key", key);
+
+        // Check if partner already uploaded their key earlier (fixes React mounting race condition!)
+        const roomSockets = io.sockets.adapter.rooms.get(roomId);
+        if (roomSockets) {
+            for (const socketId of roomSockets) {
+                if (socketId !== socket.id) {
+                    const partnerSocket = io.sockets.sockets.get(socketId);
+                    if (partnerSocket && partnerSocket.data.publicKey) {
+                        socket.emit("exchange-key", partnerSocket.data.publicKey);
+                    }
+                }
+            }
+        }
     });
 
     // Chat Handlers
