@@ -63,7 +63,8 @@ fi
 
 # 4. Build and Launch Production Docker Stack
 echo "🚀 Building and launching Ghostly containers via Docker Compose..."
-sudo docker-compose -f docker-compose.prod.yml up -d --build
+sudo docker-compose -f docker-compose.prod.yml down --remove-orphans || true
+sudo docker-compose -f docker-compose.prod.yml up -d --build --force-recreate
 
 echo "================================================================"
 echo "🎉 Deployment Complete!"
