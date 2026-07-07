@@ -2,6 +2,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Install required system libraries for OpenCV
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libgl1 \
+    libxcb1 \
+    libxext6 \
+    libsm6 \
+    libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Upgrade pip and install dependencies cleanly
 # Note: opencv-python-headless is used in requirements.txt, so heavy X11/OpenGL system packages are not needed
 COPY ai-model/requirements.txt .
