@@ -1,0 +1,27 @@
+# Root .dockerignore for massive Docker build speed optimization
+# Stops transferring hundreds of MBs of local node_modules, venvs, and git history to Docker daemon
+
+**/node_modules
+**/dist
+**/venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.env*
+**/*.log
+.git
+.gitignore
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+hosting/
+DEMO_SCRIPT.md
+azure_deploy.sh
+walkthrough.md
+implementation_plan.md
+task.md
