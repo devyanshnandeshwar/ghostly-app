@@ -1,0 +1,27 @@
+# Caddy Edge Router Configuration for Microsoft Azure Production (Root Domain Hosting)
+# Automatically provisions Let's Encrypt SSL/HTTPS certificates for your domain
+
+{$DOMAIN:devyansh.tech} {
+    # Encode responses with gzip/zstd for performance
+    encode gzip zstd
+
+    # 1. API Endpoints -> Backend Node/Express Server
+    handle /api/* {
+        reverse_proxy server:5000
+    }
+
+    # 2. Real-Time WebSockets -> Backend Socket.IO Server
+    handle /socket.io/* {
+        reverse_proxy server:5000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # 3. Frontend Web Application -> Client Nginx Server (Root /)
+    handle /* {
+        reverse_proxy client:80
+    }
+}

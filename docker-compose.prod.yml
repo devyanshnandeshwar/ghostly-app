@@ -1,0 +1,94 @@
+version: '3.9'
+
+services:
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: ghostly-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-devyansh.tech}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - client
+      - server
+    networks:
+      - ghostly-net
+
+  mongo:
+    image: mongo:7
+    container_name: ghostly-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - ghostly-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: ghostly-redis
+    restart: unless-stopped
+    expose:
+      - "6379"
+    networks:
+      - ghostly-net
+
+  ai-model:
+    build:
+      context: .
+      dockerfile: ai-model/Dockerfile
+    container_name: ghostly-ai
+    restart: unless-stopped
+    expose:
+      - "8000"
+    networks:
+      - ghostly-net
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: ghostly-server
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    expose:
+      - "5000"
+    depends_on:
+      - mongo
+      - ai-model
+      - redis
+    networks:
+      - ghostly-net
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+      args:
+        VITE_API_URL: /api
+        VITE_SOCKET_URL: ""
+        VITE_BASE_PATH: /
+    container_name: ghostly-client
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - server
+    networks:
+      - ghostly-net
+
+volumes:
+  mongo_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  ghostly-net:
+    driver: bridge
