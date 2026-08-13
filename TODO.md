@@ -234,15 +234,53 @@ mostly pointless.
 
 ## 5. Smaller known rough edges
 
-- **`removeUserFromQueue` still has a scan fallback** for when the reverse index
-  has expired (`server/src/services/match.service.ts`). Correct, but the fallback
-  path is untested against a real expiry.
-- **The session cache TTL is 60 s** (`server/src/services/session.service.ts`).
-  Invalidation on profile update and verification is wired, but any *new* writer
-  of those fields must call `invalidateSessionCache` or it will serve stale data
-  for up to a minute.
-- **`lastActive` is throttled to one write per hour per session.** A user active
-  for 29 days then idle for 31 will still be expired. Fine for an ephemeral chat
-  app; worth knowing.
-- **Reports have no retention policy.** `UserSession` has a TTL index; `Report`
-  does not, so the collection grows without bound.
+Resolved in commit `8f07795`, except 5.3 which is intentionally left alone.
+
+### 5.1 Queue-removal fallback — fixed
+
+The fallback this item asked to test lived in `removeUserFromQueue`, which had
+**no callers**. The live path, `removeFromQueue`, had no fallback at all: a
+missing index key meant the entry was stranded until the periodic reconcile
+noticed it.
+
+Deleted the dead function and moved the fallback into the live path. The queues
+are six short lists, so scanning them immediately beats leaving a stale entry
+matchable for up to a minute. Covered by the socket suite with the index key
+deleted.
+
+### 5.2 Session cache invalidation — was a live bug, now structural
+
+This was not a rough edge. A writer had **already** forgotten:
+`updateMatchHistory` wrote `pastMatches` directly, so for up to the 60s TTL
+matchmaking read the stale list and **hitting Next could pair you back up with
+the person you just left**.
+
+Writes now go through a single `updateSession` that invalidates automatically
+when the update touches a cached field. `UserSession.findByIdAndUpdate` appears
+nowhere else, so the footgun is gone rather than documented.
+
+One residual race is accepted and commented in the source: a read landing
+between the write and the invalidation can cache a stale view for one TTL.
+Closing it needs versioned cache entries, which is not worth it for data this
+short-lived.
+
+Regression test: `server/scripts/verify-rematch.mjs`.
+
+### 5.3 `lastActive` throttling — intentionally unchanged
+
+One write per hour per session. A user active for 29 days then idle for 31 is
+still expired, which is correct: the TTL measures inactivity from the last
+recorded touch. Fine for an ephemeral chat app.
+
+### 5.4 Report retention — fixed, but the duration is your call
+
+`Report` had no TTL index while `UserSession` did, so the collection grew
+without bound and reports outlived the accounts they referenced.
+
+Added a TTL defaulting to **365 days** (`REPORT_RETENTION_DAYS`), plus the
+compound `{resolved, timestamp}` index the admin query actually uses.
+
+**This one is a policy decision, not a technical one.** 365 days is a guess that
+comfortably outlasts the 30-day session TTL. Set `REPORT_RETENTION_DAYS=0` to
+keep reports forever if you have a reason to.
+
