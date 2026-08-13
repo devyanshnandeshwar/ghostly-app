@@ -2,6 +2,7 @@ import { Socket } from "socket.io";
 import { UserSession } from "../models/UserSession";
 import { IUserSession } from "@shared/types/User";
 import { verifySessionToken } from "../utils/token";
+import { touchLastActive } from "../services/session.service";
 
 
 
@@ -32,6 +33,10 @@ export async function socketAuth(
 
         // Attach session to socket
         socket.data.session = session as unknown as IUserSession;
+
+        // Connecting counts as activity. Throttled internally, so this is not
+        // a write on every connection.
+        touchLastActive(String((session as any)._id)).catch(() => {});
 
         next();
 

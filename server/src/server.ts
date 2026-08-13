@@ -3,7 +3,7 @@ import http from "http";
 import dotenv from "dotenv";
 import app from "./app";
 import { connectDB } from "./config/db";
-import { initializeSocketIO } from "./sockets/socketManager";
+import { initializeSocketIO, attachRedisAdapter } from "./sockets/socketManager";
 import { logger } from "./utils/logger";
 import { config } from "./config/env";
 import { connectRedis, redisClient } from "./config/redis";
@@ -17,6 +17,7 @@ const io = initializeSocketIO(server);
 
 async function start() {
     await connectRedis();
+    await attachRedisAdapter(io);
     await connectDB();
 
     server.listen(PORT, () => {

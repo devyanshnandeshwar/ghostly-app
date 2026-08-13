@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { Server as HttpServer } from "http";
+import { createAdapter } from "@socket.io/redis-adapter";
 import { config } from "../config/env";
 import { logger } from "../utils/logger";
 import { socketAuth } from "./auth.socket";
@@ -11,10 +12,24 @@ import { IUserSession } from "@shared/types/User";
 
 interface SocketData {
     session: IUserSession;
-    activeMatch?: {
-        partnerSessionId: string;
-        roomId: string;
-    };
+    // activeMatch is deliberately absent: it lives in Redis via
+    // presence.service so every instance can see it. publicKey stays here
+    // because fetchSockets() serializes socket.data across instances.
+    publicKey?: JsonWebKey;
+}
+
+/**
+ * Wires Socket.IO through Redis so rooms and emits cross instance boundaries.
+ * Must run after connectRedis(); without it the server is single-instance only.
+ */
+export async function attachRedisAdapter(io: Server) {
+    const subClient = redisClient.duplicate();
+    subClient.on("error", (err) => logger.error(`Redis adapter sub error: ${err}`));
+
+    await subClient.connect();
+    io.adapter(createAdapter(redisClient as any, subClient as any));
+
+    logger.info("Socket.IO Redis adapter attached");
 }
 
 export function initializeSocketIO(httpServer: HttpServer) {
@@ -31,7 +46,9 @@ export function initializeSocketIO(httpServer: HttpServer) {
     io.use(socketAuth);
 
     io.on("connection", (socket) => {
-        logger.info(`Socket connected: ${socket.id}`);
+        // debug, not info: this fires on every connection and the VM has
+        // limited IOPS to spend on log writes.
+        logger.debug(`Socket connected: ${socket.id}`);
 
         // Register Handlers
         matchSocketHandler(io, socket);
@@ -39,7 +56,7 @@ export function initializeSocketIO(httpServer: HttpServer) {
         reportSocketHandler(io, socket);
 
         socket.on("disconnect", () => {
-            logger.info(`Socket disconnected: ${socket.id}`);
+            logger.debug(`Socket disconnected: ${socket.id}`);
         });
     });
 
