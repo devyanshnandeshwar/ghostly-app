@@ -88,9 +88,17 @@ else
 fi
 
 # 4. Build and Launch Production Docker Stack
-echo "🚀 Building and launching Ghostly containers via Docker Compose..."
-sudo docker-compose -f docker-compose.prod.yml down --remove-orphans || true
-sudo docker-compose -f docker-compose.prod.yml up -d --build --force-recreate
+# No `down` and no --force-recreate: those tore the whole stack offline on
+# every deploy, including mongo and redis which rarely change. Compose only
+# recreates services whose image or config actually differs.
+echo "🚀 Building Ghostly images..."
+sudo docker compose -f docker-compose.prod.yml build
+
+echo "🚀 Rolling out changed services..."
+sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+echo "🧹 Removing images left dangling by this build..."
+sudo docker image prune -f >/dev/null 2>&1 || true
 
 echo "================================================================"
 echo "🎉 Deployment Complete!"
