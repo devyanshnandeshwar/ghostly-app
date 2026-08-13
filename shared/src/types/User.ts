@@ -25,6 +25,10 @@ export interface QueueUser {
     pastMatches: string[];
     nickname: string;
     bio: string;
+    // When this entry was enqueued. Used by the reconciler to avoid evicting a
+    // socket that simply has not propagated across the cluster yet. Optional so
+    // entries written before this field existed still parse.
+    queuedAt?: number;
 }
 
 export interface MatchResult {

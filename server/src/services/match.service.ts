@@ -1,3 +1,4 @@
+import { Server } from "socket.io";
 import { QueueUser, Gender } from "@shared/types/User";
 import { logger } from "../utils/logger";
 import { redisClient } from "../config/redis";
@@ -120,7 +121,7 @@ export async function addToQueue(newUser: QueueUser) {
         }
     }
 
-    const myEntry = JSON.stringify(newUser);
+    const myEntry = JSON.stringify({ ...newUser, queuedAt: Date.now() });
     await redisClient.rPush(myQueueKey, myEntry);
     await indexQueueEntry(newUser.socketId, myQueueKey, myEntry);
     return null;
@@ -183,4 +184,77 @@ export async function removeUserFromQueue(user: QueueUser) {
 export async function setCooldown(sessionId: string) {
     // 30 Seconds Cooldown
     await redisClient.setEx(getCooldownKey(sessionId), 30, "1");
+}
+
+// Every queue key that can exist, so reconciliation never has to SCAN (and can
+// never accidentally sweep the index keys, which share the ghosty:queue prefix).
+const ALL_QUEUE_KEYS: string[] = (["male", "female"] as const).flatMap((gender) =>
+    (["male", "female", "any"] as const).map((preference) => getQueueKey(gender, preference))
+);
+
+// A socket that enqueued moments ago may not be visible to a peer that has not
+// finished adapter discovery. Never evict an entry younger than this.
+const RECONCILE_GRACE_MS = 60_000;
+
+/**
+ * Drops queue entries whose socket is no longer connected anywhere in the
+ * cluster.
+ *
+ * removeFromQueue covers the normal disconnect path, but entries still leak
+ * when a process dies without running its handlers -- a crash, an OOM kill, or
+ * a deploy. Whoever matched against such an entry would land in a chat with a
+ * partner who never speaks, so the queue is swept periodically rather than only
+ * on disconnect.
+ *
+ * Returns the number of entries removed.
+ */
+export async function reconcileQueues(io: Server): Promise<number> {
+    let live: Set<string>;
+
+    try {
+        // Cluster-wide, not just this instance: with the Redis adapter another
+        // process may legitimately own the socket behind a queue entry.
+        live = await io.of("/").adapter.sockets(new Set());
+    } catch (error: any) {
+        // Incomplete information is not grounds for eviction.
+        logger.warn(`[Queue] Skipping reconcile, socket census failed: ${error.message}`);
+        return 0;
+    }
+
+    const now = Date.now();
+    let removed = 0;
+
+    for (const queueKey of ALL_QUEUE_KEYS) {
+        const entriesRaw = await redisClient.lRange(queueKey, 0, -1);
+
+        for (const raw of entriesRaw) {
+            let entry: QueueUser;
+
+            try {
+                entry = JSON.parse(raw);
+            } catch {
+                // Unparseable entries can never match anyone.
+                await redisClient.lRem(queueKey, 1, raw);
+                removed++;
+                continue;
+            }
+
+            if (live.has(entry.socketId)) continue;
+
+            // Entries predating queuedAt are from an older build and are, by
+            // definition, left over from a process that is no longer running.
+            const age = now - (entry.queuedAt ?? 0);
+            if (age < RECONCILE_GRACE_MS) continue;
+
+            await redisClient.lRem(queueKey, 1, raw);
+            await redisClient.del(getIndexKey(entry.socketId));
+            removed++;
+        }
+    }
+
+    if (removed > 0) {
+        logger.info(`[Queue] Reconciled ${removed} orphaned entr${removed === 1 ? "y" : "ies"}`);
+    }
+
+    return removed;
 }
