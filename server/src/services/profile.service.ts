@@ -1,4 +1,5 @@
 import { UserSession } from "../models/UserSession";
+import { updateSession } from "./session.service";
 
 interface ProfileData {
     nickname: string;
@@ -57,7 +58,8 @@ export const updateProfile = async (sessionId: string, data: ProfileData) => {
         throw err;
     }
 
-    await UserSession.findByIdAndUpdate(sessionId, {
+    // Invalidates the cached view as part of the write.
+    await updateSession(sessionId, {
         nickname,
         bio: bio || "",
         preference: preference || "any"

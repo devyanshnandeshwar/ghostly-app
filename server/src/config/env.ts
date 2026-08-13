@@ -28,7 +28,11 @@ export const config = {
     // No default: admin routes fail closed when this is unset.
     ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
     // Minimum model confidence required to mark a session as verified.
-    MIN_VERIFY_CONFIDENCE: Number(process.env.MIN_VERIFY_CONFIDENCE || 0.85)
+    MIN_VERIFY_CONFIDENCE: Number(process.env.MIN_VERIFY_CONFIDENCE || 0.85),
+    // Abuse reports are kept this long, then expire via a TTL index. Sessions
+    // already expire after 30 days, so a report far older than that refers to
+    // accounts that no longer exist. Set to 0 to keep reports forever.
+    REPORT_RETENTION_DAYS: Number(process.env.REPORT_RETENTION_DAYS ?? 365)
 };
 
 // Validate essential env vars
