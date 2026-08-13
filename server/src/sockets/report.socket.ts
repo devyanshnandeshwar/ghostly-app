@@ -1,12 +1,14 @@
 import { Server, Socket } from "socket.io";
 import { createReport } from "../services/report.service";
 import { logger } from "../utils/logger";
+import { getActiveMatch, clearActiveMatch } from "../services/presence.service";
 
 export const reportSocketHandler = (io: Server, socket: Socket) => {
     socket.on("report-user", async ({ reason, description }: { reason: string, description?: string }) => {
-        if (!socket.data.activeMatch) return;
-        
-        const { partnerSessionId, roomId } = socket.data.activeMatch;
+        const activeMatch = await getActiveMatch(socket.id);
+        if (!activeMatch) return;
+
+        const { partnerSessionId, roomId } = activeMatch;
         const reporterId = socket.data.session._id.toString();
 
         try {
@@ -18,12 +20,12 @@ export const reportSocketHandler = (io: Server, socket: Socket) => {
 
             // Disconnect both users from the room
             const roomSockets = await io.in(roomId).fetchSockets();
-            
-            roomSockets.forEach((s) => {
-                    s.emit("partner-disconnected");
-                    s.leave(roomId);
-                    s.data.activeMatch = undefined;
-            });
+
+            for (const s of roomSockets) {
+                s.emit("partner-disconnected");
+                s.leave(roomId);
+                await clearActiveMatch(s.id);
+            }
             
         } catch (error: any) {
             logger.error(`Report error: ${error.message}`);
