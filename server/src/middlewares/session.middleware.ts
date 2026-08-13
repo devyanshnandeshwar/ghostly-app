@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { UserSession } from "../models/UserSession";
 import { logger } from "../utils/logger";
+import { parseBearer, verifySessionToken } from "../utils/token";
 
 export async function verifySession(
     req: Request,
@@ -8,15 +9,23 @@ export async function verifySession(
     next: NextFunction
 ) {
     try {
-        const deviceId = req.get("x-device-id");
+        const token = parseBearer(req.get("authorization"));
 
-        if (!deviceId) {
+        if (!token) {
             return res.status(401).json({
-                error: "Device ID missing"
+                error: "Session token missing"
             });
         }
 
-        const session = await UserSession.findOne({ deviceId });
+        const payload = verifySessionToken(token);
+
+        if (!payload) {
+            return res.status(401).json({
+                error: "Invalid session"
+            });
+        }
+
+        const session = await UserSession.findOne({ deviceId: payload.deviceId });
 
         if (!session) {
             return res.status(401).json({

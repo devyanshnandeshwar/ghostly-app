@@ -1,5 +1,4 @@
 import { useRef, useEffect, useState } from "react";
-import DOMPurify from "dompurify";
 import { useChat } from "../hooks/useChatHook";
 import { useMatch } from "../context/MatchContext";
 import ReportModal from "./ReportModal";
@@ -130,7 +129,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
                                 ${msg.sender === "me" 
                                     ? "bg-primary text-primary-foreground rounded-br-none" 
                                     : "bg-muted text-muted-foreground rounded-bl-none"}
-                            `} dangerouslySetInnerHTML={{ __html: msg.sender !== "me" ? DOMPurify.sanitize(msg.text) : msg.text }} />
+                            `}>{msg.text}</div>
                         </div>
                     ))}
                     

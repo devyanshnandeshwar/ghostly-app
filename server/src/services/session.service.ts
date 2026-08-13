@@ -1,22 +1,26 @@
+import crypto from "crypto";
 import { UserSession } from "../models/UserSession";
 import { logger } from "../utils/logger";
 
-export const initSession = async (deviceId: string) => {
-    const session = await UserSession.findOneAndUpdate(
-        { deviceId },
-        {
-            $setOnInsert: {
-                deviceId,
-                isVerified: false,
-                gender: null
-            }
-        },
-        {
-            new: true,
-            upsert: true
-        }
-    );
+/**
+ * Creates a brand new session with a server-generated identifier.
+ *
+ * The identifier is never accepted from the client: ownership of a session is
+ * proven by the signed token issued alongside it.
+ */
+export const createSession = async () => {
+    const session = await UserSession.create({
+        deviceId: crypto.randomUUID(),
+        isVerified: false,
+        gender: null
+    });
+
+    logger.debug(`Created session ${session._id}`);
     return session;
+};
+
+export const getSessionByDeviceId = async (deviceId: string) => {
+    return UserSession.findOne({ deviceId });
 };
 
 import { redisClient } from "../config/redis";

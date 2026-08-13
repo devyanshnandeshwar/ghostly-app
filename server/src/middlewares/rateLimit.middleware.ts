@@ -1,10 +1,17 @@
 import rateLimit from "express-rate-limit";
+import { parseBearer, verifySessionToken } from "../utils/token";
 
-// Key generator using Device ID header or body (defensive for requests without a body)
+// Key on the session we actually verified, so the limit can't be reset by
+// inventing a new identifier. Unauthenticated requests fall back to IP.
 const keyGenerator = (req: any) => {
-    const headerDeviceId = req.headers["x-device-id"];
-    const bodyDeviceId = req.body && typeof req.body === "object" ? req.body.deviceId : undefined;
-    return headerDeviceId || bodyDeviceId || req.ip || "unknown";
+    const token = parseBearer(req.get?.("authorization"));
+
+    if (token) {
+        const payload = verifySessionToken(token);
+        if (payload) return payload.deviceId;
+    }
+
+    return req.ip || "unknown";
 };
 
 export const verifyLimiter = rateLimit({

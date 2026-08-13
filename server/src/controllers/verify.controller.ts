@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { performVerification } from "../services/verify.service";
+import { performVerification, LowConfidenceError } from "../services/verify.service";
 
 export const verifyIdentity = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -26,6 +26,16 @@ export const verifyIdentity = async (req: Request, res: Response, next: NextFunc
         });
 
     } catch (error) {
+        // Clear the buffer on the failure path too, not just on success.
+        if (req.file) {
+            (req.file as any).buffer = null;
+            req.file = undefined;
+        }
+
+        if (error instanceof LowConfidenceError) {
+            return res.status(422).json({ error: error.message });
+        }
+
         next(error);
     }
 };
