@@ -8,7 +8,7 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 
 - **No Sign-up Required**: Jump straight into chatting without creating an account.
 - **End-to-End Encryption**: Messages are encrypted in the browser with an ECDH-derived key; the server relays ciphertext and never sees plaintext. Note that public keys are exchanged through the server and are not yet verified out of band, so this protects against network eavesdroppers rather than a malicious server.
-- **Ephemeral Sessions**: User sessions are temporary and data is not persisted after the session ends.
+- **Ephemeral Sessions**: Sessions are anonymous and carry no personal details. They are stored server-side so a returning user keeps their nickname and verified status, and expire automatically 30 days after their last activity.
 
 ### AI-Powered Gender Verification
 
@@ -19,9 +19,9 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 ### Smart Matching System
 
 - **Gender-Based Matching**: Users can choose to match specifically with Male, Female, or Any gender.
-- **Priority Queues**: Verified users get priority in matchmaking.
+- **Verification Required**: Matchmaking is gated on verification — unverified users cannot join the queue at all.
 - **Cooldowns**: Prevents spamming and ensures fair usage.
-- **Past Match Avoidance**: The system intelligently avoids pairing you with the same person accurately.
+- **Past Match Avoidance**: Once two users have been paired, they are not matched with each other again.
 
 ### Real-Time Chat
 
@@ -33,9 +33,9 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 
 ## Tech Stack
 
-- **Frontend**: React, TypeScript, TailwindCSS, Framer Motion
-- **Backend**: Node.js, Express, Socket.IO
-- **Database**: MongoDB (session data), Redis (matchmaking queues, rate limiting, presence)
+- **Frontend**: React 19, TypeScript, TailwindCSS v4, Radix UI
+- **Backend**: Node.js, Express, Socket.IO (with the Redis adapter, so the server can run more than one instance)
+- **Database**: MongoDB (session data), Redis (matchmaking queues, rate limiting, session cache, match presence)
 - **AI Service**: Python, FastAPI/Uvicorn, OpenCV, Caffe Model
 
 ---
@@ -72,6 +72,7 @@ cp server/.env.example server/.env
 | `SESSION_SECRET` | Signs session tokens. Optional locally; **the server refuses to boot in production** if left at the default. Generate with `openssl rand -hex 32` |
 | `ADMIN_TOKEN` | Bearer token for `/api/admin/*`. Unset means those routes return 503 (they fail closed) |
 | `MIN_VERIFY_CONFIDENCE` | Minimum model confidence to grant verified status. Defaults to `0.85` |
+| `REPORT_RETENTION_DAYS` | How long abuse reports are kept before a TTL index expires them. Defaults to `365`; set to `0` to keep them indefinitely |
 
 ### 3. Configure the client
 
@@ -111,6 +112,35 @@ The server log should show `Redis Connected`, `Socket.IO Redis adapter attached`
 
 ---
 
+## Verifying a Change
+
+```bash
+./scripts/verify-local.sh              # rebuild, start, then run every check
+./scripts/verify-local.sh --no-build   # against an already-running stack
+```
+
+This builds the Docker stack and exercises it end to end: container health and
+non-root users, session tokens (including forged and unsigned ones), the admin
+API failing closed, upload size limits, and the full socket layer — matchmaking,
+ECDH key exchange, ciphertext relay, room authorisation, and queue cleanup.
+
+The socket suites can also be run on their own against a running stack:
+
+```bash
+VERIFY_BASE=http://localhost:3000 node server/scripts/verify-e2e.mjs      # 16 checks
+VERIFY_BASE=http://localhost:3000 node server/scripts/verify-rematch.mjs  # ~40s
+```
+
+`verify-rematch.mjs` is separate because it has to wait out the 30-second match
+cooldown to prove two users who just chatted are not immediately paired again.
+Set `VERIFY_SLOW=0` to skip it.
+
+Two things no script can check, because they need a human: **webcam verification
+with a real face**, and the UI in an actual browser. `TODO.md` keeps the manual
+checklist.
+
+---
+
 ## Deploying with Docker
 
 The production stack is five services: Caddy (TLS, routing, and serving the
@@ -120,10 +150,21 @@ built frontend), the Node server, the Python AI service, MongoDB and Redis.
 ./azure_deploy.sh
 ```
 
-The script generates `.env.production` with fresh secrets on first run, and on
-later runs refuses to deploy if `SESSION_SECRET` is missing or left at a known
-default. It builds and rolls out only the services that changed, so MongoDB and
-Redis are not restarted on every deploy.
+That single command is the whole deploy. The script:
+
+- generates `.env.production` with fresh secrets on first run;
+- on later runs, **repairs secrets in place** — if `SESSION_SECRET` is missing or
+  still set to a default that exists in git history, it backs the file up and
+  rotates it, and generates `ADMIN_TOKEN` if absent. Rerunning changes nothing
+  once both are healthy;
+- builds and rolls out only the services that changed, so MongoDB and Redis are
+  not restarted on every deploy;
+- removes the `ghostly-client` container orphaned by the move from nginx to Caddy;
+- verifies all five services are actually running afterwards, and exits non-zero
+  if any is not.
+
+Rotating `SESSION_SECRET` invalidates every existing session, so users start
+fresh. That is unavoidable when the signing key changes.
 
 To run the production stack manually:
 
