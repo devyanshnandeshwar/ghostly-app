@@ -2,68 +2,95 @@
 
 State as of 2026-08-13. Work sits on the `update` branch (11 commits, **not merged**).
 Items 1–28 refer to the numbering used in the triage review; 24 of them are done.
+Section 1 (deploy-blocking) is now automated by `azure_deploy.sh` — no manual VM steps.
 
 ---
 
 ## 1. Deploy-blocking
 
-These must happen before or during the next production deploy. Nothing here is
-optional.
-
-### 1.1 Rotate `SESSION_SECRET` on the Azure VM
-
-**Only the local `.env.production` was rotated.** The VM has its own copy, which
-is gitignored and was never touched by this work — it almost certainly still
-contains `klymo_production_secret_key`, the value `azure_deploy.sh` used to write
-and which is in git history.
-
-That string now signs every session token, so anyone with repo access can forge a
-session for any user.
+**All four items in this section are now handled automatically** (commit
+`d716dc1`). The deploy is one command:
 
 ```bash
-# on the VM, in the repo directory
-openssl rand -hex 32          # paste into SESSION_SECRET in .env.production
+./azure_deploy.sh
 ```
 
-`azure_deploy.sh` now refuses to deploy if it finds that value, so a deploy will
-fail loudly rather than silently continue. Rotating invalidates existing sessions,
-which this deploy does anyway.
+Everything below records what that script now does, so you can verify it did it
+rather than having to do it yourself. There are no manual VM steps left.
 
-### 1.2 Add `ADMIN_TOKEN` on the Azure VM
+### 1.1 Rotate `SESSION_SECRET` on the Azure VM — automated
 
-Same situation. Without it `/api/admin/*` returns **503** — locked, but unusable
-by you. The deploy script warns rather than aborts.
+The VM's `.env.production` is gitignored and was never touched by this work, so
+it almost certainly still holds `klymo_production_secret_key` — the value the old
+`azure_deploy.sh` wrote, which is in git history. That string now signs every
+session token, so anyone with repo access could forge a session for any user.
+
+The script previously aborted and told you to rotate it by hand. It now rotates
+it in place: it backs up `.env.production`, strips any existing definition so the
+file cannot end up with two, appends a fresh `openssl rand -hex 32`, and re-applies
+mode 600. A rerun detects the healthy value and changes nothing.
+
+Rotating invalidates existing sessions, which this deploy does regardless.
+
+**Verify after deploying:**
 
 ```bash
-echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env.production
+grep SESSION_SECRET .env.production          # 64 hex chars, not the old string
+ls .env.production.bak.*                     # your previous file, if it was repaired
 ```
 
-### 1.3 The frontend container is gone — rebuild, don't just pull
+### 1.2 Add `ADMIN_TOKEN` on the Azure VM — automated
 
-Item 21 folded nginx into Caddy. The prod stack is now **five services**, and the
-`client` service no longer exists in `docker-compose.prod.yml`. The Caddy image is
-now built from `caddy/Dockerfile` and has the SPA baked in at `/srv`.
-
-A deploy that only restarts containers will leave the old six-service stack
-running. Run a build:
+Same mechanism. Without it `/api/admin/*` returns 503 — locked, but unusable by
+you. The script now generates one instead of warning about it.
 
 ```bash
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
-docker rm -f ghostly-client 2>/dev/null   # orphan from the old stack
+grep ADMIN_TOKEN .env.production             # this is your admin credential
 ```
 
-### 1.4 Check production Redis for stale queue entries
+### 1.3 The frontend container is gone — automated
 
-A leftover queue entry pointing at a long-dead socket was found in the local
-Redis during testing — a real user matching against it would enter a chat whose
-partner never responds. The fix prevents new orphans but does not clear old ones.
+Item 21 folded nginx into Caddy. The prod stack is **five services**; the `client`
+service no longer exists in `docker-compose.prod.yml`, and the SPA is baked into
+the Caddy image at `/srv`.
+
+The script builds before rolling out, passes `--remove-orphans`, and then
+force-removes `ghostly-client` explicitly — `--remove-orphans` only catches it
+when the compose labels match, and a container created by an older compose
+version can survive and keep answering on the network.
+
+It also now waits and checks that all five services are actually `running`,
+exiting non-zero if any is not. Compose exits 0 once containers are *created*,
+which says nothing about them staying up.
+
+### 1.4 Stale queue entries — fixed in code, no purge needed
+
+This was a real leak: `removeFromQueue` only runs on a clean disconnect, so
+entries survived any death that skipped the handlers — a crash, an OOM kill, or a
+deploy. A user matching against a leaked entry entered a chat whose partner never
+responded.
+
+The server now sweeps every 60s and drops entries whose socket is not connected
+anywhere in the cluster, so existing orphans on the VM clear themselves within a
+minute of the deploy. Three safeguards stop it evicting real users:
+
+- the census comes from the Socket.IO adapter, so sockets owned by another
+  instance count as live;
+- a failed census skips the sweep rather than treating everyone as dead;
+- entries younger than 60s are never evicted, covering the window before a new
+  socket has propagated.
+
+**Verify after deploying** (should be empty at a quiet moment, with no action
+from you):
 
 ```bash
 docker exec ghostly-redis redis-cli --scan --pattern 'ghosty:queue:*'
-# inspect, then if the queues should be empty at a quiet moment:
-docker exec ghostly-redis redis-cli --scan --pattern 'ghosty:queue:*' | xargs -r docker exec -i ghostly-redis redis-cli del
+docker compose -f docker-compose.prod.yml logs server | grep Reconciled
 ```
+
+Tested by injecting orphans in both the old and new entry formats plus a corrupt
+entry — all swept — while a just-enqueued entry survived until its grace period
+expired and a connected user sat in the queue across multiple sweeps untouched.
 
 ---
 
