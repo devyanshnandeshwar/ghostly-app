@@ -67,23 +67,51 @@ EOF
 else
     echo "✅ Found existing .env.production."
 
-    # Fail fast rather than deploying a server that cannot start or whose
-    # admin API is unreachable.
-    if ! grep -q '^SESSION_SECRET=.\+' .env.production; then
-        echo "❌ SESSION_SECRET is missing or empty in .env.production."
-        echo "   Set it to a strong random value: openssl rand -hex 32"
-        exit 1
-    fi
+    # Secrets are repaired in place rather than reported as instructions to run
+    # by hand. A deploy that prints "rotate this" and continues anyway is how a
+    # known-compromised secret survives across releases.
+    ENV_BACKED_UP=0
+    backup_env_once() {
+        if [ "$ENV_BACKED_UP" -eq 0 ]; then
+            cp .env.production ".env.production.bak.$(date +%Y%m%d%H%M%S)"
+            chmod 600 .env.production.bak.* 2>/dev/null || true
+            ENV_BACKED_UP=1
+        fi
+    }
 
-    if grep -qE '^SESSION_SECRET=(supersecret|klymo_production_secret_key)$' .env.production; then
-        echo "❌ SESSION_SECRET is set to a known default that exists in git history."
-        echo "   It signs every session token. Rotate it: openssl rand -hex 32"
-        exit 1
+    # Any secret that has ever been committed is public to anyone with repo
+    # access, and SESSION_SECRET signs every session token.
+    if ! grep -q '^SESSION_SECRET=.\+' .env.production \
+       || grep -qE '^SESSION_SECRET=(supersecret|klymo_production_secret_key)$' .env.production; then
+        backup_env_once
+        NEW_SECRET=$(openssl rand -hex 32)
+        # Drop every existing definition before appending, so the file cannot
+        # end up with two SESSION_SECRET lines where the last one wins.
+        grep -v '^SESSION_SECRET=' .env.production > .env.production.tmp
+        echo "SESSION_SECRET=$NEW_SECRET" >> .env.production.tmp
+        mv .env.production.tmp .env.production
+        chmod 600 .env.production
+        echo "🔑 SESSION_SECRET was missing or a known default from git history."
+        echo "   Rotated to a fresh value. Existing sessions are now invalid,"
+        echo "   which this deploy would have done regardless."
+    else
+        echo "✅ SESSION_SECRET is set and is not a known default."
     fi
 
     if ! grep -q '^ADMIN_TOKEN=.\+' .env.production; then
-        echo "⚠️  ADMIN_TOKEN is not set — /api/admin/* will return 503 (fails closed)."
-        echo "   Add one with: echo \"ADMIN_TOKEN=\$(openssl rand -hex 32)\" >> .env.production"
+        backup_env_once
+        grep -v '^ADMIN_TOKEN=' .env.production > .env.production.tmp
+        echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env.production.tmp
+        mv .env.production.tmp .env.production
+        chmod 600 .env.production
+        echo "🔑 ADMIN_TOKEN was not set — generated one."
+        echo "   Read it with: grep ADMIN_TOKEN .env.production"
+    else
+        echo "✅ ADMIN_TOKEN is set."
+    fi
+
+    if [ "$ENV_BACKED_UP" -eq 1 ]; then
+        echo "   Previous .env.production saved as .env.production.bak.*"
     fi
 fi
 
@@ -97,13 +125,51 @@ sudo docker compose -f docker-compose.prod.yml build
 echo "🚀 Rolling out changed services..."
 sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
+# The frontend used to be its own nginx container. It is now baked into the
+# Caddy image, so the old container is not part of the stack any more.
+# --remove-orphans handles it only when the labels match; a container created by
+# an older compose version can survive and keep answering on the network.
+if sudo docker ps -a --format '{{.Names}}' | grep -qx 'ghostly-client'; then
+    echo "🧹 Removing ghostly-client, left over from the pre-Caddy stack..."
+    sudo docker rm -f ghostly-client >/dev/null 2>&1 || true
+fi
+
 echo "🧹 Removing images left dangling by this build..."
 sudo docker image prune -f >/dev/null 2>&1 || true
 
+# A deploy that half-succeeds should not report success. Compose exits 0 once
+# containers are created, which says nothing about them staying up.
+echo "🔍 Verifying the stack came up..."
+sleep 10
+DEPLOY_OK=1
+for svc in caddy server ai-model mongo redis; do
+    cid=$(sudo docker compose -f docker-compose.prod.yml ps -q "$svc" 2>/dev/null)
+    if [ -z "$cid" ]; then
+        echo "   ❌ $svc has no container"
+        DEPLOY_OK=0
+        continue
+    fi
+
+    state=$(sudo docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null)
+    restarts=$(sudo docker inspect -f '{{.RestartCount}}' "$cid" 2>/dev/null)
+    if [ "$state" = "running" ]; then
+        echo "   ✅ $svc running (restarts: $restarts)"
+    else
+        echo "   ❌ $svc is '$state' — check: sudo docker compose -f docker-compose.prod.yml logs $svc"
+        DEPLOY_OK=0
+    fi
+done
+
 echo "================================================================"
-echo "🎉 Deployment Complete!"
+if [ "$DEPLOY_OK" -eq 1 ]; then
+    echo "🎉 Deployment Complete!"
+else
+    echo "⚠️  Deployment finished with services not running — see above."
+fi
 echo "================================================================"
 echo "Check running containers with: sudo docker ps"
-echo "View logs with: sudo docker-compose -f docker-compose.prod.yml logs -f"
-echo "Your app should now be live at: https://devyansh.tech/ghostly (or your configured domain)"
+echo "View logs with: sudo docker compose -f docker-compose.prod.yml logs -f"
+echo "Your app should now be live at: https://devyansh.tech (or your configured domain)"
 echo "================================================================"
+
+[ "$DEPLOY_OK" -eq 1 ] || exit 1
