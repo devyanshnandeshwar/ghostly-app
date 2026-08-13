@@ -22,6 +22,6 @@
 
     # 3. Frontend Web Application -> Client Nginx Server (Root /)
     handle /* {
-        reverse_proxy client:80
+        reverse_proxy client:8080
     }
 }
