@@ -1,6 +1,5 @@
 import { useState } from "react";
 import api from "../services/client";
-import { getDeviceId } from "../utils/device";
 import { User, FileText, ArrowRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,8 +33,6 @@ export function ProfileSetup({ onComplete }: ProfileSetupProps) {
                 nickname: DOMPurify.sanitize(nickname),
                 bio: DOMPurify.sanitize(bio),
                 preference
-            }, {
-                headers: { "X-Device-Id": getDeviceId() }
             });
             onComplete();
         } catch (err: any) {

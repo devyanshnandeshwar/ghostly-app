@@ -13,11 +13,11 @@ class SocketService {
         return SocketService.instance;
     }
 
-    public connect(url: string, deviceId: string) {
+    public connect(url: string, token: string) {
         if (this.socket && this.socket.connected) return this.socket;
 
         this.socket = io(url, {
-            auth: { deviceId },
+            auth: { token },
             transports: ["websocket"],
             reconnectionAttempts: 5
         });

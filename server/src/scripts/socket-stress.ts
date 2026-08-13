@@ -1,4 +1,5 @@
 import { io } from "socket.io-client";
+import { issueSessionToken } from "../utils/token";
 
 const URL = "http://localhost:5000";
 const CONNECTIONS = 100;
@@ -11,7 +12,10 @@ let active = 0;
 for (let i = 0; i < CONNECTIONS; i++) {
     setTimeout(() => {
         const socket = io(URL, {
-            auth: { deviceId: `stress-test-${i}` },
+            // Signed like a real client. Note the handshake still requires a
+            // matching session row in Mongo, so seed those to exercise the
+            // connected path rather than the rejection path.
+            auth: { token: issueSessionToken(`stress-test-${i}`) },
             transports: ["websocket"]
         });
 

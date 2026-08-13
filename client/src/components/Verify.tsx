@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import api from "../services/client";
-import { getDeviceId } from "../utils/device";
 import { Camera, ScanFace, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -101,8 +100,7 @@ export function Verify({ onVerified }: VerifyProps) {
         try {
             const response = await api.post("/verify/gender", formData, {
                 headers: {
-                    "Content-Type": "multipart/form-data",
-                    "X-Device-Id": getDeviceId()
+                    "Content-Type": "multipart/form-data"
                 }
             });
 
@@ -119,9 +117,10 @@ export function Verify({ onVerified }: VerifyProps) {
                 onVerified();
             }, 1500);
 
-        } catch (err) {
+        } catch (err: any) {
             console.error("[Verify] Error:", err);
-            setError("Verification failed. Please try again.");
+            // Surface the server's reason (e.g. low confidence, no face detected).
+            setError(err.response?.data?.error || "Verification failed. Please try again.");
         } finally {
             setLoading(false);
         }

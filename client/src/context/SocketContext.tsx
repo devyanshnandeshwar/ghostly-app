@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { Socket } from "socket.io-client";
 import { useSession } from "./SessionContext";
 import { socketService } from "../services/socketService";
+import { getSessionToken } from "../utils/auth";
 
 interface SocketContextType {
     socket: Socket | null;
@@ -16,10 +17,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [isConnected, setIsConnected] = useState(false);
 
     useEffect(() => {
-        if (session?.deviceId) {
+        const token = getSessionToken();
+        if (session && token) {
             // In deployment we proxy Socket.IO through nginx, so same-origin works.
             const socketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
-            const socketInstance = socketService.connect(socketUrl, session.deviceId);
+            const socketInstance = socketService.connect(socketUrl, token);
             setSocket(socketInstance);
 
             const onConnect = () => setIsConnected(true);

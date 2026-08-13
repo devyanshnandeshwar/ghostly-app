@@ -13,6 +13,8 @@ if (fs.existsSync(envPath)) {
 const defaultClientUrl = "http://localhost:5173";
 const clientUrl = process.env.CLIENT_URL || defaultClientUrl;
 
+const INSECURE_SESSION_SECRET = "supersecret";
+
 // Allow production URL + localhost so both EC2 and local Docker/dev work
 export const config = {
     PORT: process.env.PORT || 5000,
@@ -22,7 +24,11 @@ export const config = {
         (origin, i, arr) => arr.indexOf(origin) === i
     ),
     NODE_ENV: process.env.NODE_ENV || "development",
-    SESSION_SECRET: process.env.SESSION_SECRET || "supersecret"
+    SESSION_SECRET: process.env.SESSION_SECRET || INSECURE_SESSION_SECRET,
+    // No default: admin routes fail closed when this is unset.
+    ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
+    // Minimum model confidence required to mark a session as verified.
+    MIN_VERIFY_CONFIDENCE: Number(process.env.MIN_VERIFY_CONFIDENCE || 0.85)
 };
 
 // Validate essential env vars
@@ -31,4 +37,12 @@ const missingVars = requiredVars.filter((key) => !process.env[key]);
 
 if (missingVars.length > 0) {
     console.warn(`[Config] ⚠️  Missing required environment variables: ${missingVars.join(", ")}`);
+}
+
+// SESSION_SECRET signs session tokens. A known default in production would let
+// anyone forge a credential for any session, so refuse to boot.
+if (config.NODE_ENV === "production" && config.SESSION_SECRET === INSECURE_SESSION_SECRET) {
+    throw new Error(
+        "[Config] SESSION_SECRET must be set to a strong random value in production"
+    );
 }

@@ -5,6 +5,10 @@ import { redisClient } from "../config/redis";
 // Queue Key Constants
 const QUEUE_PREFIX = "ghosty:queue";
 const COOLDOWN_PREFIX = "ghosty:cooldown";
+const INDEX_PREFIX = "ghosty:queue:index";
+
+// Safety net so an index entry can never outlive its queue entry forever.
+const INDEX_TTL_SECONDS = 60 * 60;
 
 function getQueueKey(gender: string, preference: string): string {
     return `${QUEUE_PREFIX}:${gender}:${preference}`;
@@ -12,6 +16,20 @@ function getQueueKey(gender: string, preference: string): string {
 
 function getCooldownKey(sessionId: string): string {
     return `${COOLDOWN_PREFIX}:${sessionId}`;
+}
+
+// Reverse index: socketId -> where that socket's queue entry lives.
+// Without it, cleaning up on disconnect would mean scanning every queue.
+function getIndexKey(socketId: string): string {
+    return `${INDEX_PREFIX}:${socketId}`;
+}
+
+async function indexQueueEntry(socketId: string, queueKey: string, entry: string) {
+    await redisClient.setEx(
+        getIndexKey(socketId),
+        INDEX_TTL_SECONDS,
+        JSON.stringify({ queueKey, entry })
+    );
 }
 
 export async function addToQueue(newUser: QueueUser) {
@@ -63,6 +81,7 @@ export async function addToQueue(newUser: QueueUser) {
              // Check collision with Self
              if (candidate.sessionId === sessionId) {
                  await redisClient.lRem(queueKey, 1, candidateRaw); // Remove stale self
+                 await redisClient.del(getIndexKey(candidate.socketId));
                  continue;
              }
 
@@ -75,6 +94,7 @@ export async function addToQueue(newUser: QueueUser) {
              const removedCount = await redisClient.lRem(queueKey, 1, candidateRaw);
              if (removedCount === 1) {
                  // Successfully claimed
+                 await redisClient.del(getIndexKey(candidate.socketId));
                  await redisClient.del(cooldownKey);
                  await redisClient.del(getCooldownKey(candidate.sessionId));
 
@@ -96,29 +116,48 @@ export async function addToQueue(newUser: QueueUser) {
         const entry: QueueUser = JSON.parse(entryRaw);
         if (entry.sessionId === sessionId) {
             await redisClient.lRem(myQueueKey, 1, entryRaw);
+            await redisClient.del(getIndexKey(entry.socketId));
         }
     }
 
-    await redisClient.rPush(myQueueKey, JSON.stringify(newUser));
+    const myEntry = JSON.stringify(newUser);
+    await redisClient.rPush(myQueueKey, myEntry);
+    await indexQueueEntry(newUser.socketId, myQueueKey, myEntry);
     return null;
 }
 
+/**
+ * Removes a disconnected socket's queue entry via the reverse index, so a
+ * dropped user is not offered as a match to someone else.
+ */
 export async function removeFromQueue(socketId: string) {
-    // Scan all queues and remove by socketId logic is too expensive in Redis without a reverse index.
-    // However, removeUserFromQueue is the main one used.
+    const indexKey = getIndexKey(socketId);
+    const raw = await redisClient.get(indexKey);
+
+    if (!raw) return;
+
+    try {
+        const { queueKey, entry } = JSON.parse(raw);
+        await redisClient.lRem(queueKey, 1, entry);
+    } catch (error: any) {
+        logger.warn(`Failed to clean queue entry for ${socketId}: ${error.message}`);
+    }
+
+    await redisClient.del(indexKey);
 }
 
 export async function removeUserFromQueue(user: QueueUser) {
     const queueKey = getQueueKey(user.gender, user.preference);
-    
+
     const allEntriesRaw = await redisClient.lRange(queueKey, 0, -1);
     for (const entryRaw of allEntriesRaw) {
         const entry: QueueUser = JSON.parse(entryRaw);
         if (entry.sessionId === user.sessionId) {
             await redisClient.lRem(queueKey, 1, entryRaw);
+            await redisClient.del(getIndexKey(entry.socketId));
         }
     }
-    
+
     // Set Cooldown
     await setCooldown(user.sessionId);
 }
