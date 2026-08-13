@@ -76,7 +76,7 @@ services:
     container_name: ghostly-client
     restart: unless-stopped
     expose:
-      - "80"
+      - "8080"
     depends_on:
       - server
     networks:
