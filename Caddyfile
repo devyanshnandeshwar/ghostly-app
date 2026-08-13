@@ -20,8 +20,11 @@
         }
     }
 
-    # 3. Frontend Web Application -> Client Nginx Server (Root /)
+    # 3. Frontend Web Application -> served directly from this container.
+    # No nginx hop: the built SPA is baked in at /srv.
     handle /* {
-        reverse_proxy client:8080
+        root * /srv
+        try_files {path} /index.html
+        file_server
     }
 }

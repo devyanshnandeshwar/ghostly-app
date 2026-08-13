@@ -1,7 +1,15 @@
 services:
 
+  # Serves the built SPA itself and routes /api + /socket.io to the server.
+  # The separate nginx container is gone.
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: caddy/Dockerfile
+      args:
+        VITE_API_URL: /api
+        VITE_SOCKET_URL: ""
+        VITE_BASE_PATH: /
     container_name: ghostly-caddy
     restart: unless-stopped
     ports:
@@ -10,11 +18,9 @@ services:
     environment:
       - DOMAIN=${DOMAIN:-devyansh.tech}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - client
       - server
     networks:
       - ghostly-net
@@ -23,6 +29,10 @@ services:
     image: mongo:7
     container_name: ghostly-mongo
     restart: unless-stopped
+    # WiredTiger defaults to 50% of (RAM - 1GB) and sizes against HOST ram in a
+    # container, so it would claim ~1.5GB of a 4GB VM to serve two tiny
+    # collections. Cap it.
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
     volumes:
       - mongo_data:/data/db
     networks:
@@ -62,23 +72,6 @@ services:
       - mongo
       - ai-model
       - redis
-    networks:
-      - ghostly-net
-
-  client:
-    build:
-      context: .
-      dockerfile: client/Dockerfile
-      args:
-        VITE_API_URL: /api
-        VITE_SOCKET_URL: ""
-        VITE_BASE_PATH: /
-    container_name: ghostly-client
-    restart: unless-stopped
-    expose:
-      - "8080"
-    depends_on:
-      - server
     networks:
       - ghostly-net
 
