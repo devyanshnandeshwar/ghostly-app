@@ -82,7 +82,7 @@ export function ProfileSetup({ onComplete }: ProfileSetupProps) {
                                 id="bio"
                                 value={bio}
                                 onChange={(e) => setBio(e.target.value)}
-                                className="pl-9 min-h-[100px] resize-none"
+                                className="pl-9 min-h-25 resize-none"
                                 placeholder="Here to talk about stars..."
                                 maxLength={120}
                             />
