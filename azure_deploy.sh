@@ -46,19 +46,45 @@ fi
 # 3. Check and Create .env.production if missing (since .env* is gitignored)
 echo "⚙️  Checking environment configuration..."
 if [ ! -f .env.production ]; then
-    echo "⚠️  .env.production not found (likely ignored by git). Creating default production config..."
+    echo "⚠️  .env.production not found (likely ignored by git). Creating production config..."
+    # Secrets are generated per-host and never committed. A hardcoded default
+    # here would be readable by anyone with repo access, and SESSION_SECRET now
+    # signs every session token.
     cat <<EOF > .env.production
 PORT=5000
 MONGO_URI=mongodb://mongo:27017/kylmo
 CLIENT_URL=https://devyansh.tech
 NODE_ENV=production
-SESSION_SECRET=klymo_production_secret_key
+SESSION_SECRET=$(openssl rand -hex 32)
+ADMIN_TOKEN=$(openssl rand -hex 32)
+MIN_VERIFY_CONFIDENCE=0.85
 AI_MODEL_URL=http://ai-model:8000/api/verify-gender
 REDIS_URL=redis://redis:6379
 EOF
-    echo "✅ Default .env.production created for https://devyansh.tech."
+    chmod 600 .env.production
+    echo "✅ .env.production created with freshly generated secrets."
+    echo "   Retrieve the admin token with: grep ADMIN_TOKEN .env.production"
 else
     echo "✅ Found existing .env.production."
+
+    # Fail fast rather than deploying a server that cannot start or whose
+    # admin API is unreachable.
+    if ! grep -q '^SESSION_SECRET=.\+' .env.production; then
+        echo "❌ SESSION_SECRET is missing or empty in .env.production."
+        echo "   Set it to a strong random value: openssl rand -hex 32"
+        exit 1
+    fi
+
+    if grep -qE '^SESSION_SECRET=(supersecret|klymo_production_secret_key)$' .env.production; then
+        echo "❌ SESSION_SECRET is set to a known default that exists in git history."
+        echo "   It signs every session token. Rotate it: openssl rand -hex 32"
+        exit 1
+    fi
+
+    if ! grep -q '^ADMIN_TOKEN=.\+' .env.production; then
+        echo "⚠️  ADMIN_TOKEN is not set — /api/admin/* will return 503 (fails closed)."
+        echo "   Add one with: echo \"ADMIN_TOKEN=\$(openssl rand -hex 32)\" >> .env.production"
+    fi
 fi
 
 # 4. Build and Launch Production Docker Stack
