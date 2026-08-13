@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { createSession, getSessionByDeviceId } from "../services/session.service";
+import { createSession, getSessionByDeviceId, touchLastActive } from "../services/session.service";
 import { issueSessionToken, verifySessionToken } from "../utils/token";
 
 export const init = async (req: Request, res: Response, next: NextFunction) => {
@@ -17,6 +17,8 @@ export const init = async (req: Request, res: Response, next: NextFunction) => {
                 session = await getSessionByDeviceId(payload.deviceId);
                 if (session) {
                     issuedToken = token;
+                    // Keep the TTL index from expiring a session that is in use.
+                    await touchLastActive(session._id.toString());
                 }
             }
         }

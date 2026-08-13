@@ -2,6 +2,7 @@ import { verifyGender } from "../ai-bridge/client";
 import { UserSession } from "../models/UserSession";
 import { config } from "../config/env";
 import { logger } from "../utils/logger";
+import { invalidateSessionCache } from "./session.service";
 import crypto from "crypto";
 
 export class LowConfidenceError extends Error {
@@ -36,6 +37,10 @@ export const performVerification = async (imageBuffer: Buffer, session: any) => 
         gender: result.gender,
         userHash: userHash
     });
+
+    // isVerified and gender gate the matchmaking queue, so the cached view
+    // must not survive verification.
+    await invalidateSessionCache(session._id.toString());
 
     return {
         gender: result.gender,

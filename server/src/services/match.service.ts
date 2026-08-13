@@ -147,8 +147,26 @@ export async function removeFromQueue(socketId: string) {
 }
 
 export async function removeUserFromQueue(user: QueueUser) {
-    const queueKey = getQueueKey(user.gender, user.preference);
+    // Fast path: the reverse index points straight at the entry, so a skip
+    // costs one lookup instead of reading the whole queue.
+    const indexKey = getIndexKey(user.socketId);
+    const raw = await redisClient.get(indexKey);
 
+    if (raw) {
+        try {
+            const { queueKey, entry } = JSON.parse(raw);
+            await redisClient.lRem(queueKey, 1, entry);
+            await redisClient.del(indexKey);
+            await setCooldown(user.sessionId);
+            return;
+        } catch (error: any) {
+            logger.warn(`Queue index unreadable for ${user.socketId}: ${error.message}`);
+        }
+    }
+
+    // Fallback: the index expired or was never written. Scan the one queue
+    // this user would be in rather than leaving a stale entry behind.
+    const queueKey = getQueueKey(user.gender, user.preference);
     const allEntriesRaw = await redisClient.lRange(queueKey, 0, -1);
     for (const entryRaw of allEntriesRaw) {
         const entry: QueueUser = JSON.parse(entryRaw);
