@@ -141,6 +141,14 @@ if [ -d server/node_modules/socket.io-client ]; then
     # own directory, not the working directory.
     VERIFY_BASE="$BASE" node server/scripts/verify-e2e.mjs
     [ $? -eq 0 ] || FAIL=$((FAIL+1))
+
+    # Separate because it must wait out the 30s match cooldown to prove that a
+    # just-matched pair is not immediately paired again.
+    if [ "${VERIFY_SLOW:-1}" = "1" ]; then
+        printf "\n\033[1mRematch regression\033[0m (~40s, set VERIFY_SLOW=0 to skip)\n"
+        VERIFY_BASE="$BASE" node server/scripts/verify-rematch.mjs
+        [ $? -eq 0 ] || FAIL=$((FAIL+1))
+    fi
 else
     printf "\n  \033[33mSKIP\033[0m  socket checks (run: cd server && npm install)\n"
 fi

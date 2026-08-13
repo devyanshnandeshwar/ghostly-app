@@ -168,8 +168,29 @@ async function makeVerifiedSession(gender, nickname) {
     check("no orphaned queue entry after disconnect",
         after.entries === 0 && after.index === 0, JSON.stringify(after));
 
+    // --- queue removal without the reverse index ---
+    // The index has a 1h TTL, so the scan fallback would otherwise never run in
+    // testing. Deleting the key simulates an expiry or a memory eviction.
+    const faller = await makeVerifiedSession("male", "Faller");
+    const sf = await connect(faller.token);
+    sf.emit("join-queue");
+    await new Promise((r) => setTimeout(r, 900));
+    const beforeFallback = queueState();
+
+    for (const key of redis("--scan --pattern 'ghosty:queue:index:*'").split("\n").filter(Boolean)) {
+        redis(`del ${key}`);
+    }
+
+    sf.emit("leave-queue");
+    await new Promise((r) => setTimeout(r, 1400));
+    const afterFallback = queueState();
+    check("queue entry removed even with no reverse index",
+        beforeFallback.entries === 1 && afterFallback.entries === 0 && afterFallback.index === 0,
+        `${beforeFallback.entries} -> ${afterFallback.entries}`);
+
     sb.disconnect();
     sc.disconnect();
+    sf.disconnect();
 
     console.log(`\n  ${passed} passed, ${failed} failed\n`);
     process.exit(failed > 0 ? 1 : 0);

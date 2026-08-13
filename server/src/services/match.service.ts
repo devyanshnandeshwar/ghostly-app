@@ -128,29 +128,18 @@ export async function addToQueue(newUser: QueueUser) {
 }
 
 /**
- * Removes a disconnected socket's queue entry via the reverse index, so a
- * dropped user is not offered as a match to someone else.
+ * Removes a socket's queue entry, so a user who left or dropped is not offered
+ * as a match to someone else.
+ *
+ * The reverse index makes the common case one lookup. When it is missing --
+ * evicted under memory pressure, expired after INDEX_TTL_SECONDS, or never
+ * written because the process died mid-enqueue -- this used to return early and
+ * strand the entry until the periodic reconcile noticed. The queues are a fixed
+ * set of six short lists, so scanning them directly is cheap enough to do
+ * immediately rather than leaving a stale entry matchable for up to a minute.
  */
 export async function removeFromQueue(socketId: string) {
     const indexKey = getIndexKey(socketId);
-    const raw = await redisClient.get(indexKey);
-
-    if (!raw) return;
-
-    try {
-        const { queueKey, entry } = JSON.parse(raw);
-        await redisClient.lRem(queueKey, 1, entry);
-    } catch (error: any) {
-        logger.warn(`Failed to clean queue entry for ${socketId}: ${error.message}`);
-    }
-
-    await redisClient.del(indexKey);
-}
-
-export async function removeUserFromQueue(user: QueueUser) {
-    // Fast path: the reverse index points straight at the entry, so a skip
-    // costs one lookup instead of reading the whole queue.
-    const indexKey = getIndexKey(user.socketId);
     const raw = await redisClient.get(indexKey);
 
     if (raw) {
@@ -158,27 +147,39 @@ export async function removeUserFromQueue(user: QueueUser) {
             const { queueKey, entry } = JSON.parse(raw);
             await redisClient.lRem(queueKey, 1, entry);
             await redisClient.del(indexKey);
-            await setCooldown(user.sessionId);
             return;
         } catch (error: any) {
-            logger.warn(`Queue index unreadable for ${user.socketId}: ${error.message}`);
+            // Fall through to the scan rather than trusting a corrupt index.
+            logger.warn(`Queue index unreadable for ${socketId}: ${error.message}`);
         }
     }
 
-    // Fallback: the index expired or was never written. Scan the one queue
-    // this user would be in rather than leaving a stale entry behind.
-    const queueKey = getQueueKey(user.gender, user.preference);
-    const allEntriesRaw = await redisClient.lRange(queueKey, 0, -1);
-    for (const entryRaw of allEntriesRaw) {
-        const entry: QueueUser = JSON.parse(entryRaw);
-        if (entry.sessionId === user.sessionId) {
+    let removed = 0;
+
+    for (const queueKey of ALL_QUEUE_KEYS) {
+        const entriesRaw = await redisClient.lRange(queueKey, 0, -1);
+
+        for (const entryRaw of entriesRaw) {
+            let entry: QueueUser;
+
+            try {
+                entry = JSON.parse(entryRaw);
+            } catch {
+                continue;
+            }
+
+            if (entry.socketId !== socketId) continue;
+
             await redisClient.lRem(queueKey, 1, entryRaw);
-            await redisClient.del(getIndexKey(entry.socketId));
+            removed++;
         }
     }
 
-    // Set Cooldown
-    await setCooldown(user.sessionId);
+    await redisClient.del(indexKey);
+
+    if (removed > 0) {
+        logger.debug(`[Queue] Removed ${removed} entr${removed === 1 ? "y" : "ies"} for ${socketId} via scan fallback`);
+    }
 }
 
 export async function setCooldown(sessionId: string) {

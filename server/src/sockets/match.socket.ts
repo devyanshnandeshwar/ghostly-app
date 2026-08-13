@@ -1,8 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { addToQueue, removeFromQueue, setCooldown } from "../services/match.service";
 import { setActiveMatch, getActiveMatch, clearActiveMatch } from "../services/presence.service";
-import { checkDailyLimit, incrementDailyUsage, getQueueSessionView } from "../services/session.service";
-import { UserSession } from "../models/UserSession";
+import { checkDailyLimit, incrementDailyUsage, getQueueSessionView, updateSession } from "../services/session.service";
 import { logger } from "../utils/logger";
 
 export const matchSocketHandler = (io: Server, socket: Socket) => {
@@ -166,8 +165,11 @@ async function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
 }
 
 async function updateMatchHistory(id1: string, id2: string) {
-    await UserSession.findByIdAndUpdate(id1, { $addToSet: { pastMatches: id2 } });
-    await UserSession.findByIdAndUpdate(id2, { $addToSet: { pastMatches: id1 } });
+    // updateSession invalidates the cached view, without which the next
+    // join-queue inside the cache TTL reads a pastMatches list that does not
+    // include this match yet -- and pairs the two of them straight back up.
+    await updateSession(id1, { $addToSet: { pastMatches: id2 } });
+    await updateSession(id2, { $addToSet: { pastMatches: id1 } });
 }
 
 async function updateUsage(user: any) {
@@ -176,7 +178,7 @@ async function updateUsage(user: any) {
         await incrementDailyUsage(user.sessionId);
         
         // DB Persistence (for analytics)
-        await UserSession.findByIdAndUpdate(user.sessionId, { 
+        await updateSession(user.sessionId, {
             $inc: { dailyFilterUsage: 1 },
             lastFilterUsageDate: new Date()
         });
