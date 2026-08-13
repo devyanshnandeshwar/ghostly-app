@@ -78,9 +78,14 @@ export function Verify({ onVerified }: VerifyProps) {
 
         if (!context) return;
 
-        // Set dimensions
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        // Downscale before upload. The face detector runs at 300x300 and the
+        // gender model at 227x227, so a full-resolution frame is bytes on the
+        // wire that the model never looks at.
+        const MAX_EDGE = 640;
+        const scale = Math.min(1, MAX_EDGE / Math.max(video.videoWidth, video.videoHeight));
+
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
 
         // Draw frame
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -89,7 +94,7 @@ export function Verify({ onVerified }: VerifyProps) {
         canvas.toBlob(async (blob) => {
             if (!blob) return;
             await uploadImage(blob);
-        }, "image/jpeg", 0.95);
+        }, "image/jpeg", 0.85);
     };
 
     const uploadImage = async (blob: Blob) => {
