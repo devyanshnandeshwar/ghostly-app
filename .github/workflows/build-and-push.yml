@@ -1,0 +1,70 @@
+# Builds the production images in CI and pushes them to Azure Container
+# Registry, so the VM never compiles anything.
+#
+# Building opencv and numpy on two burstable vCPUs is what forced
+# azure_deploy.sh to provision 4GB of swap. Once this workflow is enabled the
+# VM only needs `docker compose pull && docker compose up -d`.
+#
+# Required repository secrets:
+#   ACR_LOGIN_SERVER  e.g. ghostly.azurecr.io
+#   ACR_USERNAME      from: az acr credential show --name <registry>
+#   ACR_PASSWORD      likewise
+#
+# Enable the registry's admin user first:
+#   az acr update --name <registry> --admin-enabled true
+
+name: Build and push images
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One image failing shouldn't hide the status of the others.
+      fail-fast: false
+      matrix:
+        include:
+          - name: server
+            dockerfile: server/Dockerfile
+          - name: ai-model
+            dockerfile: ai-model/Dockerfile
+          - name: caddy
+            dockerfile: caddy/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          # Tag with the commit SHA as well as latest, so a bad deploy can be
+          # rolled back to a known image rather than rebuilt from git.
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/ghostly-${{ matrix.name }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/ghostly-${{ matrix.name }}:${{ github.sha }}
+          # The frontend is baked into the caddy image at build time.
+          build-args: |
+            VITE_API_URL=/api
+            VITE_SOCKET_URL=
+            VITE_BASE_PATH=/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
