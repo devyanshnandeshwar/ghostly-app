@@ -12,7 +12,8 @@
     "types": [
       "vite/client"
     ],
-    "baseUrl": ".",
+    // No baseUrl: deprecated in TS 7. "paths" resolve relative to this file's
+    // directory instead, which matches the aliases in vite.config.ts.
     "paths": {
       "@shared/*": ["../shared/src/*"],
       "@/*": ["./src/*"]

@@ -37,7 +37,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
     };
 
     return (
-        <Card className="w-full max-w-2xl mx-auto h-[85vh] sm:h-[80vh] min-h-[500px] sm:min-h-[600px] flex flex-col border-border/50 shadow-2xl relative overflow-hidden py-0 gap-0">
+        <Card className="w-full max-w-2xl mx-auto h-[85vh] sm:h-[80vh] min-h-125 sm:min-h-150 flex flex-col border-border/50 shadow-2xl relative overflow-hidden py-0 gap-0">
              {/* Report Toast */}
             {reported && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-destructive/90 text-destructive-foreground px-4 py-2 rounded-full text-sm font-medium z-50 flex items-center gap-2 shadow-lg animate-in slide-in-from-top-2 fade-in duration-300">
@@ -50,7 +50,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
                 <div className="flex items-center gap-3">
                     <div className="relative">
                         <Avatar className="h-10 w-10 ring-2 ring-background">
-                            <AvatarFallback className="bg-gradient-to-br from-primary to-purple-500 text-white">
+                            <AvatarFallback className="bg-linear-to-br from-primary to-purple-500 text-white">
                                 <User className="h-5 w-5" />
                             </AvatarFallback>
                         </Avatar>
@@ -69,7 +69,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
                         </div>
                        
                         {partner?.bio ? (
-                            <p className="text-xs text-muted-foreground truncate max-w-[150px] sm:max-w-[200px] mt-1">
+                            <p className="text-xs text-muted-foreground truncate max-w-37.5 sm:max-w-50 mt-1">
                                 {partner.bio}
                             </p>
                         ) : (
@@ -125,7 +125,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
                             className={`flex w-full ${msg.sender === "me" ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 fade-in duration-300`}
                         >
                             <div className={`
-                                max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm break-words
+                                max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm wrap-break-word
                                 ${msg.sender === "me" 
                                     ? "bg-primary text-primary-foreground rounded-br-none" 
                                     : "bg-muted text-muted-foreground rounded-bl-none"}

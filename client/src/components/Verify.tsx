@@ -143,7 +143,7 @@ export function Verify({ onVerified }: VerifyProps) {
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                 <div className="relative aspect-[3/4] bg-muted rounded-xl overflow-hidden border border-border">
+                 <div className="relative aspect-3/4 bg-muted rounded-xl overflow-hidden border border-border">
                     <video
                         ref={videoRef}
                         autoPlay
