@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import DOMPurify from "dompurify";
 
 interface ProfileSetupProps {
     onComplete: () => void;
@@ -30,8 +29,10 @@ export function ProfileSetup({ onComplete }: ProfileSetupProps) {
 
         try {
             await api.post("/profile/update", {
-                nickname: DOMPurify.sanitize(nickname),
-                bio: DOMPurify.sanitize(bio),
+                // Not sanitized here on purpose: xssMiddleware sanitizes every
+                // request body server-side, and an attacker skips this UI anyway.
+                nickname,
+                bio,
                 preference
             });
             onComplete();

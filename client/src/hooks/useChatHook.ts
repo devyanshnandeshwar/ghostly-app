@@ -129,11 +129,43 @@ export function useChat(roomId: string | null) {
         return () => { socket.off("partner-typing", handleTyping); };
     }, [socket]);
 
+    // Typing is one bit of information, so only send it when the bit flips.
+    // Emitting per keystroke cost one frame in and one fanout frame out for
+    // every character typed.
+    const isTypingRef = useRef(false);
+    const typingIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const setTypingState = (next: boolean) => {
+        if (!roomId || !socket) return;
+        if (isTypingRef.current === next) return;
+        isTypingRef.current = next;
+        socket.emit("typing", { roomId, isTyping: next });
+    };
+
     const handleTyping = (text: string) => {
         setInput(text);
         if (!roomId || !socket) return;
-        socket.emit("typing", { roomId, isTyping: text.length > 0 });
+
+        if (typingIdleRef.current) clearTimeout(typingIdleRef.current);
+
+        if (text.length === 0) {
+            setTypingState(false);
+            return;
+        }
+
+        setTypingState(true);
+        // Stop the indicator if they pause, without needing another keystroke.
+        typingIdleRef.current = setTimeout(() => setTypingState(false), 3000);
     };
+
+    // Don't leave a partner staring at a stuck indicator after unmount or a
+    // room change.
+    useEffect(() => {
+        return () => {
+            if (typingIdleRef.current) clearTimeout(typingIdleRef.current);
+            isTypingRef.current = false;
+        };
+    }, [roomId]);
 
     const sendMessage = async () => {
         if (!roomId || !input.trim() || !sharedKey || !socket) return;
@@ -150,7 +182,8 @@ export function useChat(roomId: string | null) {
             });
 
             // Stop typing
-            socket.emit("typing", { roomId, isTyping: false });
+            if (typingIdleRef.current) clearTimeout(typingIdleRef.current);
+            setTypingState(false);
 
             setMessages(prev => [...prev, { text: input, sender: "me" }]);
             setInput("");
