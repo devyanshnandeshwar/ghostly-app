@@ -4,6 +4,7 @@ services:
     image: mongo:7
     container_name: ghostly-mongo
     restart: unless-stopped
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
     volumes:
       - mongo_data:/data/db
     networks:
@@ -58,7 +59,7 @@ services:
     container_name: ghostly-client
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
       - server
     networks:

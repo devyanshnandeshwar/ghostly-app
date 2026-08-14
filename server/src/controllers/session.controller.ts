@@ -1,21 +1,39 @@
 import { Request, Response, NextFunction } from "express";
-import { initSession } from "../services/session.service";
+import { createSession, getSessionByDeviceId, touchLastActive } from "../services/session.service";
+import { issueSessionToken, verifySessionToken } from "../utils/token";
 
 export const init = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { deviceId } = req.body;
+        const { token } = req.body;
 
-        if (!deviceId) {
-            return res.status(400).json({ error: "Device ID required" });
+        // Resume an existing session only when the caller presents a token we
+        // signed. Anything else starts a fresh session.
+        let session = null;
+        let issuedToken: string | null = null;
+
+        if (typeof token === "string") {
+            const payload = verifySessionToken(token);
+            if (payload) {
+                session = await getSessionByDeviceId(payload.deviceId);
+                if (session) {
+                    issuedToken = token;
+                    // Keep the TTL index from expiring a session that is in use.
+                    await touchLastActive(session._id.toString());
+                }
+            }
         }
 
-        const session = await initSession(deviceId);
+        if (!session) {
+            session = await createSession();
+            issuedToken = issueSessionToken(session.deviceId);
+        }
 
         res.json({
+            token: issuedToken,
             _id: session._id,
-            deviceId: session.deviceId,
             isVerified: session.isVerified,
             gender: session.gender,
+            preference: session.preference,
             nickname: session.nickname,
             bio: session.bio,
             userHash: session.userHash,

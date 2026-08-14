@@ -1,6 +1,5 @@
 import { useState } from "react";
 import api from "../services/client";
-import { getDeviceId } from "../utils/device";
 import { User, FileText, ArrowRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import DOMPurify from "dompurify";
 
 interface ProfileSetupProps {
     onComplete: () => void;
@@ -31,11 +29,11 @@ export function ProfileSetup({ onComplete }: ProfileSetupProps) {
 
         try {
             await api.post("/profile/update", {
-                nickname: DOMPurify.sanitize(nickname),
-                bio: DOMPurify.sanitize(bio),
+                // Not sanitized here on purpose: xssMiddleware sanitizes every
+                // request body server-side, and an attacker skips this UI anyway.
+                nickname,
+                bio,
                 preference
-            }, {
-                headers: { "X-Device-Id": getDeviceId() }
             });
             onComplete();
         } catch (err: any) {
@@ -84,7 +82,7 @@ export function ProfileSetup({ onComplete }: ProfileSetupProps) {
                                 id="bio"
                                 value={bio}
                                 onChange={(e) => setBio(e.target.value)}
-                                className="pl-9 min-h-[100px] resize-none"
+                                className="pl-9 min-h-25 resize-none"
                                 placeholder="Here to talk about stars..."
                                 maxLength={120}
                             />

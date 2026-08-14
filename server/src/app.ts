@@ -40,7 +40,7 @@ app.get("/api/protected", verifySession, (req, res) => {
 
     res.json({
         message: "Session verified",
-        deviceId: session.deviceId
+        sessionId: session._id
     });
 });
 

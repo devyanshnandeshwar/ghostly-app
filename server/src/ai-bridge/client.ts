@@ -15,6 +15,31 @@ const aiClient = axios.create({
     timeout: 5000, // 5s timeout
 });
 
+/**
+ * The AI service rejected the image itself (no face, undecodable, too large).
+ * Deterministic: retrying the same bytes cannot help, and the reason is worth
+ * showing the user rather than hiding behind "service unavailable".
+ */
+export class AIImageError extends Error {
+    constructor(message: string, public status: number) {
+        super(message);
+        this.name = "AIImageError";
+    }
+}
+
+function asImageError(error: any): AIImageError | null {
+    const response = error?.response;
+    if (!response || response.status < 400 || response.status >= 500) return null;
+
+    const data = response.data || {};
+    const detail =
+        data.error ||
+        (typeof data.detail === "string" ? data.detail : null) ||
+        "Image could not be processed";
+
+    return new AIImageError(detail, response.status);
+}
+
 export async function verifyGender(imageBuffer: Buffer) {
     try {
         const form = new FormData();
@@ -31,6 +56,14 @@ export async function verifyGender(imageBuffer: Buffer) {
             confidence: response.data.confidence
         };
     } catch (error: any) {
+        // A 4xx means the image was rejected, not that the service is down.
+        // Surface it as-is instead of burning a retry on the same bytes.
+        const imageError = asImageError(error);
+        if (imageError) {
+            logger.info(`[AI Bridge] Image rejected (${imageError.status}): ${imageError.message}`);
+            throw imageError;
+        }
+
         logger.error("[AI Bridge] Attempt 1 Failed:", error.message);
         if (error.response) {
             logger.error("[AI Bridge] Response Status:", error.response.status);
@@ -57,6 +90,11 @@ export async function verifyGender(imageBuffer: Buffer) {
             };
 
         } catch (retryError: any) {
+             const retryImageError = asImageError(retryError);
+             if (retryImageError) {
+                 throw retryImageError;
+             }
+
              logger.error("[AI Bridge] Retry Failed:", retryError.message);
              if (retryError.response) {
                 logger.error("[AI Bridge] Retry Response Data:", retryError.response.data);

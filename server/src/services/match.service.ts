@@ -1,3 +1,4 @@
+import { Server } from "socket.io";
 import { QueueUser, Gender } from "@shared/types/User";
 import { logger } from "../utils/logger";
 import { redisClient } from "../config/redis";
@@ -5,6 +6,10 @@ import { redisClient } from "../config/redis";
 // Queue Key Constants
 const QUEUE_PREFIX = "ghosty:queue";
 const COOLDOWN_PREFIX = "ghosty:cooldown";
+const INDEX_PREFIX = "ghosty:queue:index";
+
+// Safety net so an index entry can never outlive its queue entry forever.
+const INDEX_TTL_SECONDS = 60 * 60;
 
 function getQueueKey(gender: string, preference: string): string {
     return `${QUEUE_PREFIX}:${gender}:${preference}`;
@@ -12,6 +17,20 @@ function getQueueKey(gender: string, preference: string): string {
 
 function getCooldownKey(sessionId: string): string {
     return `${COOLDOWN_PREFIX}:${sessionId}`;
+}
+
+// Reverse index: socketId -> where that socket's queue entry lives.
+// Without it, cleaning up on disconnect would mean scanning every queue.
+function getIndexKey(socketId: string): string {
+    return `${INDEX_PREFIX}:${socketId}`;
+}
+
+async function indexQueueEntry(socketId: string, queueKey: string, entry: string) {
+    await redisClient.setEx(
+        getIndexKey(socketId),
+        INDEX_TTL_SECONDS,
+        JSON.stringify({ queueKey, entry })
+    );
 }
 
 export async function addToQueue(newUser: QueueUser) {
@@ -63,6 +82,7 @@ export async function addToQueue(newUser: QueueUser) {
              // Check collision with Self
              if (candidate.sessionId === sessionId) {
                  await redisClient.lRem(queueKey, 1, candidateRaw); // Remove stale self
+                 await redisClient.del(getIndexKey(candidate.socketId));
                  continue;
              }
 
@@ -75,6 +95,7 @@ export async function addToQueue(newUser: QueueUser) {
              const removedCount = await redisClient.lRem(queueKey, 1, candidateRaw);
              if (removedCount === 1) {
                  // Successfully claimed
+                 await redisClient.del(getIndexKey(candidate.socketId));
                  await redisClient.del(cooldownKey);
                  await redisClient.del(getCooldownKey(candidate.sessionId));
 
@@ -96,34 +117,145 @@ export async function addToQueue(newUser: QueueUser) {
         const entry: QueueUser = JSON.parse(entryRaw);
         if (entry.sessionId === sessionId) {
             await redisClient.lRem(myQueueKey, 1, entryRaw);
+            await redisClient.del(getIndexKey(entry.socketId));
         }
     }
 
-    await redisClient.rPush(myQueueKey, JSON.stringify(newUser));
+    const myEntry = JSON.stringify({ ...newUser, queuedAt: Date.now() });
+    await redisClient.rPush(myQueueKey, myEntry);
+    await indexQueueEntry(newUser.socketId, myQueueKey, myEntry);
     return null;
 }
 
+/**
+ * Removes a socket's queue entry, so a user who left or dropped is not offered
+ * as a match to someone else.
+ *
+ * The reverse index makes the common case one lookup. When it is missing --
+ * evicted under memory pressure, expired after INDEX_TTL_SECONDS, or never
+ * written because the process died mid-enqueue -- this used to return early and
+ * strand the entry until the periodic reconcile noticed. The queues are a fixed
+ * set of six short lists, so scanning them directly is cheap enough to do
+ * immediately rather than leaving a stale entry matchable for up to a minute.
+ */
 export async function removeFromQueue(socketId: string) {
-    // Scan all queues and remove by socketId logic is too expensive in Redis without a reverse index.
-    // However, removeUserFromQueue is the main one used.
-}
+    const indexKey = getIndexKey(socketId);
+    const raw = await redisClient.get(indexKey);
 
-export async function removeUserFromQueue(user: QueueUser) {
-    const queueKey = getQueueKey(user.gender, user.preference);
-    
-    const allEntriesRaw = await redisClient.lRange(queueKey, 0, -1);
-    for (const entryRaw of allEntriesRaw) {
-        const entry: QueueUser = JSON.parse(entryRaw);
-        if (entry.sessionId === user.sessionId) {
-            await redisClient.lRem(queueKey, 1, entryRaw);
+    if (raw) {
+        try {
+            const { queueKey, entry } = JSON.parse(raw);
+            await redisClient.lRem(queueKey, 1, entry);
+            await redisClient.del(indexKey);
+            return;
+        } catch (error: any) {
+            // Fall through to the scan rather than trusting a corrupt index.
+            logger.warn(`Queue index unreadable for ${socketId}: ${error.message}`);
         }
     }
-    
-    // Set Cooldown
-    await setCooldown(user.sessionId);
+
+    let removed = 0;
+
+    for (const queueKey of ALL_QUEUE_KEYS) {
+        const entriesRaw = await redisClient.lRange(queueKey, 0, -1);
+
+        for (const entryRaw of entriesRaw) {
+            let entry: QueueUser;
+
+            try {
+                entry = JSON.parse(entryRaw);
+            } catch {
+                continue;
+            }
+
+            if (entry.socketId !== socketId) continue;
+
+            await redisClient.lRem(queueKey, 1, entryRaw);
+            removed++;
+        }
+    }
+
+    await redisClient.del(indexKey);
+
+    if (removed > 0) {
+        logger.debug(`[Queue] Removed ${removed} entr${removed === 1 ? "y" : "ies"} for ${socketId} via scan fallback`);
+    }
 }
 
 export async function setCooldown(sessionId: string) {
     // 30 Seconds Cooldown
     await redisClient.setEx(getCooldownKey(sessionId), 30, "1");
+}
+
+// Every queue key that can exist, so reconciliation never has to SCAN (and can
+// never accidentally sweep the index keys, which share the ghosty:queue prefix).
+const ALL_QUEUE_KEYS: string[] = (["male", "female"] as const).flatMap((gender) =>
+    (["male", "female", "any"] as const).map((preference) => getQueueKey(gender, preference))
+);
+
+// A socket that enqueued moments ago may not be visible to a peer that has not
+// finished adapter discovery. Never evict an entry younger than this.
+const RECONCILE_GRACE_MS = 60_000;
+
+/**
+ * Drops queue entries whose socket is no longer connected anywhere in the
+ * cluster.
+ *
+ * removeFromQueue covers the normal disconnect path, but entries still leak
+ * when a process dies without running its handlers -- a crash, an OOM kill, or
+ * a deploy. Whoever matched against such an entry would land in a chat with a
+ * partner who never speaks, so the queue is swept periodically rather than only
+ * on disconnect.
+ *
+ * Returns the number of entries removed.
+ */
+export async function reconcileQueues(io: Server): Promise<number> {
+    let live: Set<string>;
+
+    try {
+        // Cluster-wide, not just this instance: with the Redis adapter another
+        // process may legitimately own the socket behind a queue entry.
+        live = await io.of("/").adapter.sockets(new Set());
+    } catch (error: any) {
+        // Incomplete information is not grounds for eviction.
+        logger.warn(`[Queue] Skipping reconcile, socket census failed: ${error.message}`);
+        return 0;
+    }
+
+    const now = Date.now();
+    let removed = 0;
+
+    for (const queueKey of ALL_QUEUE_KEYS) {
+        const entriesRaw = await redisClient.lRange(queueKey, 0, -1);
+
+        for (const raw of entriesRaw) {
+            let entry: QueueUser;
+
+            try {
+                entry = JSON.parse(raw);
+            } catch {
+                // Unparseable entries can never match anyone.
+                await redisClient.lRem(queueKey, 1, raw);
+                removed++;
+                continue;
+            }
+
+            if (live.has(entry.socketId)) continue;
+
+            // Entries predating queuedAt are from an older build and are, by
+            // definition, left over from a process that is no longer running.
+            const age = now - (entry.queuedAt ?? 0);
+            if (age < RECONCILE_GRACE_MS) continue;
+
+            await redisClient.lRem(queueKey, 1, raw);
+            await redisClient.del(getIndexKey(entry.socketId));
+            removed++;
+        }
+    }
+
+    if (removed > 0) {
+        logger.info(`[Queue] Reconciled ${removed} orphaned entr${removed === 1 ? "y" : "ies"}`);
+    }
+
+    return removed;
 }

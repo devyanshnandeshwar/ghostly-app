@@ -1,15 +1,16 @@
 import { Server, Socket } from "socket.io";
 import { addToQueue, removeFromQueue, setCooldown } from "../services/match.service";
-import { checkDailyLimit, incrementDailyUsage } from "../services/session.service";
-import { UserSession } from "../models/UserSession";
+import { setActiveMatch, getActiveMatch, clearActiveMatch } from "../services/presence.service";
+import { checkDailyLimit, incrementDailyUsage, getQueueSessionView, updateSession } from "../services/session.service";
 import { logger } from "../utils/logger";
 
 export const matchSocketHandler = (io: Server, socket: Socket) => {
     socket.on("join-queue", async () => {
          try {
             const session = socket.data.session;
-            const currentSession = await UserSession.findById(session._id);
-            
+            // Redis-cached view: joining the queue no longer costs a Mongo read.
+            const currentSession = await getQueueSessionView(session._id.toString());
+
             if (!currentSession) {
                 socket.emit("queue-error", "Session not found");
                 return;
@@ -22,7 +23,7 @@ export const matchSocketHandler = (io: Server, socket: Socket) => {
 
             // Freemium Limits Logic
             if (currentSession.preference !== "any") {
-                const isAllowed = await checkDailyLimit(currentSession._id.toString());
+                const isAllowed = await checkDailyLimit(currentSession._id);
                 if (!isAllowed) {
                      socket.emit("queue-error", "Daily limit reached for specific gender filters. Switch to 'Any' to continue.");
                      return;
@@ -31,7 +32,7 @@ export const matchSocketHandler = (io: Server, socket: Socket) => {
 
             const result = await addToQueue({
                 socketId: socket.id,
-                sessionId: currentSession._id.toString(),
+                sessionId: currentSession._id,
                 nickname: currentSession.nickname || "Anonymous",
                 bio: currentSession.bio || "",
                 gender: currentSession.gender as "male" | "female",
@@ -50,11 +51,11 @@ export const matchSocketHandler = (io: Server, socket: Socket) => {
             if (match) {
                 const roomId = `room-${match.user1.socketId}-${match.user2.socketId}`;
                 
-                const s1 = io.sockets.sockets.get(match.user1.socketId);
-                const s2 = io.sockets.sockets.get(match.user2.socketId);
-
-                if (s1) s1.join(roomId);
-                if (s2) s2.join(roomId);
+                // socketsJoin goes through the adapter, so it also works when
+                // the peer is connected to a different instance. Looking the
+                // socket up locally would silently skip a remote one.
+                await io.in(match.user1.socketId).socketsJoin(roomId);
+                await io.in(match.user2.socketId).socketsJoin(roomId);
 
                 io.to(match.user1.socketId).emit("matched", {
                     roomId,
@@ -68,8 +69,14 @@ export const matchSocketHandler = (io: Server, socket: Socket) => {
                     partnerBio: match.user1.bio
                 });
 
-                if (s1) s1.data.activeMatch = { partnerSessionId: match.user2.sessionId, roomId };
-                if (s2) s2.data.activeMatch = { partnerSessionId: match.user1.sessionId, roomId };
+                await setActiveMatch(match.user1.socketId, {
+                    partnerSessionId: match.user2.sessionId,
+                    roomId
+                });
+                await setActiveMatch(match.user2.socketId, {
+                    partnerSessionId: match.user1.sessionId,
+                    roomId
+                });
 
                 // Update DB
                 await updateMatchHistory(match.user1.sessionId, match.user2.sessionId);
@@ -99,39 +106,34 @@ export const matchSocketHandler = (io: Server, socket: Socket) => {
         handleLeaveChat(io, socket, true);
     });
 
-    socket.on("disconnect", () => {
-        removeFromQueue(socket.id);
-        const activeMatch = socket.data.activeMatch;
-        if (activeMatch) {
-            handleLeaveChat(io, socket, false);
+    socket.on("disconnect", async () => {
+        await removeFromQueue(socket.id);
+        if (await getActiveMatch(socket.id)) {
+            await handleLeaveChat(io, socket, false);
         }
     });
 };
 
-function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
-    const activeMatch = socket.data.activeMatch;
-    
+async function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
+    const activeMatch = await getActiveMatch(socket.id);
+
     // Clear Active Match Data immediately to prevent double processing
-    socket.data.activeMatch = null;
+    await clearActiveMatch(socket.id);
     socket.data.publicKey = null;
 
     if (activeMatch) {
-        const { roomId, partnerSessionId } = activeMatch;
-        
+        const { roomId } = activeMatch;
+
         // Notify partner
         socket.to(roomId).emit(isNext ? "partner-skipped" : "partner-left");
-        
-        // Disconnect both from room
-        const roomSockets = io.sockets.adapter.rooms.get(roomId);
-        if (roomSockets) {
-            for (const socketId of roomSockets) {
-                const s = io.sockets.sockets.get(socketId);
-                if (s) {
-                    s.leave(roomId);
-                    s.data.activeMatch = null;
-                    s.data.publicKey = null;
-                }
-            }
+
+        // Disconnect both from room. fetchSockets is adapter-aware, so a peer
+        // on another instance is torn down too.
+        const roomSockets = await io.in(roomId).fetchSockets();
+        for (const s of roomSockets) {
+            s.leave(roomId);
+            s.data.publicKey = null;
+            await clearActiveMatch(s.id);
         }
     }
 
@@ -163,8 +165,11 @@ function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
 }
 
 async function updateMatchHistory(id1: string, id2: string) {
-    await UserSession.findByIdAndUpdate(id1, { $addToSet: { pastMatches: id2 } });
-    await UserSession.findByIdAndUpdate(id2, { $addToSet: { pastMatches: id1 } });
+    // updateSession invalidates the cached view, without which the next
+    // join-queue inside the cache TTL reads a pastMatches list that does not
+    // include this match yet -- and pairs the two of them straight back up.
+    await updateSession(id1, { $addToSet: { pastMatches: id2 } });
+    await updateSession(id2, { $addToSet: { pastMatches: id1 } });
 }
 
 async function updateUsage(user: any) {
@@ -173,7 +178,7 @@ async function updateUsage(user: any) {
         await incrementDailyUsage(user.sessionId);
         
         // DB Persistence (for analytics)
-        await UserSession.findByIdAndUpdate(user.sessionId, { 
+        await updateSession(user.sessionId, {
             $inc: { dailyFilterUsage: 1 },
             lastFilterUsageDate: new Date()
         });
