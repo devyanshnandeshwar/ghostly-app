@@ -28,9 +28,11 @@ WORKDIR /app/client
 RUN npm run build
 
 # --- Serve with Nginx ---
-FROM nginx:alpine
+# Unprivileged variant: runs as the non-root "nginx" user, which cannot bind
+# port 80, so the server listens on 8080 instead.
+FROM nginxinc/nginx-unprivileged:alpine
 
 COPY --from=builder /app/client/dist /usr/share/nginx/html
 COPY client/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 8080

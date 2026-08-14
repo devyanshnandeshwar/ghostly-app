@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import api from "../services/client";
-import { getDeviceId } from "../utils/device";
 import { Camera, ScanFace, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -79,9 +78,14 @@ export function Verify({ onVerified }: VerifyProps) {
 
         if (!context) return;
 
-        // Set dimensions
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        // Downscale before upload. The face detector runs at 300x300 and the
+        // gender model at 227x227, so a full-resolution frame is bytes on the
+        // wire that the model never looks at.
+        const MAX_EDGE = 640;
+        const scale = Math.min(1, MAX_EDGE / Math.max(video.videoWidth, video.videoHeight));
+
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
 
         // Draw frame
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -90,7 +94,7 @@ export function Verify({ onVerified }: VerifyProps) {
         canvas.toBlob(async (blob) => {
             if (!blob) return;
             await uploadImage(blob);
-        }, "image/jpeg", 0.95);
+        }, "image/jpeg", 0.85);
     };
 
     const uploadImage = async (blob: Blob) => {
@@ -101,8 +105,7 @@ export function Verify({ onVerified }: VerifyProps) {
         try {
             const response = await api.post("/verify/gender", formData, {
                 headers: {
-                    "Content-Type": "multipart/form-data",
-                    "X-Device-Id": getDeviceId()
+                    "Content-Type": "multipart/form-data"
                 }
             });
 
@@ -119,9 +122,10 @@ export function Verify({ onVerified }: VerifyProps) {
                 onVerified();
             }, 1500);
 
-        } catch (err) {
+        } catch (err: any) {
             console.error("[Verify] Error:", err);
-            setError("Verification failed. Please try again.");
+            // Surface the server's reason (e.g. low confidence, no face detected).
+            setError(err.response?.data?.error || "Verification failed. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -139,7 +143,7 @@ export function Verify({ onVerified }: VerifyProps) {
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                 <div className="relative aspect-[3/4] bg-muted rounded-xl overflow-hidden border border-border">
+                 <div className="relative aspect-3/4 bg-muted rounded-xl overflow-hidden border border-border">
                     <video
                         ref={videoRef}
                         autoPlay

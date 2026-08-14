@@ -22,6 +22,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY ai-model/app/ ./app/
 COPY ai-model/*.pb ai-model/*.pbtxt ai-model/*.caffemodel ai-model/*.prototxt ./
 
+# Drop root: run as a dedicated unprivileged user.
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

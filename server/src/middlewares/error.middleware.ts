@@ -13,6 +13,16 @@ export const errorHandler = (
     res: Response,
     next: NextFunction
 ) => {
+    // Multer rejects oversized uploads before any handler runs. That is a
+    // client error, not a server fault, so don't log a stack for it.
+    if ((err as any).code === "LIMIT_FILE_SIZE") {
+        logger.info(`[Upload] Rejected oversized file on ${req.originalUrl}`);
+        return res.status(413).json({
+            success: false,
+            error: "Image is too large. Please use a file under 5MB."
+        });
+    }
+
     logger.error(`[Error] ${err.message}`);
     if (config.NODE_ENV !== 'test') {
         logger.error(err.stack || "");

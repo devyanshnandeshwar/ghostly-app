@@ -32,6 +32,9 @@ COPY --from=builder /app/server/dist ./dist
 COPY --from=builder /app/server/node_modules ./node_modules
 COPY --from=builder /app/server/package.json ./package.json
 
+# Drop root: the node image ships an unprivileged "node" user.
+USER node
+
 EXPOSE 5000
 
 CMD ["node", "dist/server/src/server.js"]
