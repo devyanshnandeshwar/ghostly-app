@@ -1,66 +1,79 @@
-import { Ghost, AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, Ghost } from "lucide-react";
+
 import { ModeToggle } from "./mode-toggle";
-import { Badge } from "@/components/ui/badge";
 import { useSession } from "../context/SessionContext";
 import { useCountdown } from "../hooks/useCountdown";
 
+const FREE_FILTERS_PER_DAY = 5;
+
 interface NavbarProps {
-    onLogoClick?: () => void;
+  onLogoClick?: () => void;
 }
 
 export function Navbar({ onLogoClick }: NavbarProps) {
   const { session } = useSession();
-//   const [reportCount, setReportCount] = useState<number>(0);
   const timeLeft = useCountdown(session?.lastFilterUsageDate);
-  const isLoggedIn = session && session.isVerified && session.nickname;
+
+  const isLoggedIn = Boolean(session?.isVerified && session?.nickname);
+  const used = session?.dailyFilterUsage ?? 0;
+  const filtersLeft = Math.max(0, FREE_FILTERS_PER_DAY - used);
+  const filtersExhausted = session?.dailyFilterUsage !== undefined && filtersLeft === 0;
   const reportCount = session?.reportsAgainst || 0;
 
-  // Initial fetch is handled by SessionContext.
-  // We rely on refreshSession() being called elsewhere.
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-14 max-w-screen-2xl items-center mx-auto px-4">
-        <div 
-            className="flex items-center gap-2 font-bold text-xl cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={onLogoClick}
+    <header className="glass sticky top-0 z-50 w-full border-b">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
+        <button
+          type="button"
+          onClick={onLogoClick}
+          className="flex items-center gap-2.5 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <div className="bg-primary/10 p-2 rounded-lg">
-             <Ghost className="h-5 w-5 text-primary" />
-          </div>
-          <span className="hidden sm:inline-block text-primary">
-            Ghostly
+          <span className="grid size-8 place-items-center rounded-lg bg-primary/12">
+            <Ghost className="size-4.5 text-primary" />
           </span>
-        </div>
-        <div className="flex flex-1 items-center justify-end space-x-2">
-            <nav className="flex items-center gap-4">
-               {isLoggedIn && (
-                   <>
-                        {/* Free Matches Count */}
-                        {session?.dailyFilterUsage !== undefined && (
-                             <Badge variant={session.dailyFilterUsage >= 5 ? "destructive" : "outline"} className="gap-1">
-                                <span className="hidden sm:inline">Free Matches:</span>
-                                {Math.max(0, 5 - (session.dailyFilterUsage || 0))}/5
-                            </Badge>
-                        )}
+          <span className="text-lg font-semibold tracking-tight">Ghostly</span>
+          <span className="sr-only">Back to start</span>
+        </button>
 
-                        {/* Free Tier Restore Timer */}
-                        {session?.dailyFilterUsage !== undefined && session.dailyFilterUsage >= 5 && timeLeft && (
-                            <Badge variant="outline" className="gap-1 font-mono text-xs">
-                                <Clock className="h-3 w-3" />
-                                {timeLeft}
-                            </Badge>
-                        )}
+        <div className="ml-auto flex items-center gap-2">
+          {isLoggedIn && session?.dailyFilterUsage !== undefined && (
+            <span
+              title={
+                filtersExhausted
+                  ? "You have used today's gender filters. Matching with Any is still open."
+                  : "Matches left today using a specific gender filter"
+              }
+              className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs sm:inline-flex ${
+                filtersExhausted
+                  ? "border-transparent bg-secondary text-muted-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <span className="font-mono tabular-nums text-foreground">
+                {filtersLeft}/{FREE_FILTERS_PER_DAY}
+              </span>
+              filters
+              {filtersExhausted && timeLeft && (
+                <span className="font-mono tabular-nums">· {timeLeft}</span>
+              )}
+            </span>
+          )}
 
-                        {/* Report Badge */}
-                        <Badge variant={reportCount > 0 ? (reportCount > 2 ? "destructive" : "secondary") : "outline"} className="gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            <span className="hidden sm:inline">Reports:</span> {reportCount}
-                        </Badge>
-                   </>
-               )}
-               <ModeToggle />
-            </nav>
+          {isLoggedIn && reportCount > 0 && (
+            <span
+              title={`${reportCount} report${reportCount === 1 ? "" : "s"} filed against you`}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                reportCount > 2
+                  ? "bg-destructive text-destructive-foreground"
+                  : "bg-secondary text-foreground"
+              }`}
+            >
+              <AlertTriangle className="size-3" />
+              {reportCount}
+            </span>
+          )}
+
+          <ModeToggle />
         </div>
       </div>
     </header>
