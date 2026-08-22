@@ -49,3 +49,6 @@ hosting/
 
 # Local Demo Scripts
 DEMO_SCRIPT.md
+
+# Regenerable via ai-model/tools/caffe_to_onnx.py
+ai-model/gender_net.onnx
