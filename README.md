@@ -34,7 +34,7 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 ## Tech Stack
 
 - **Frontend**: React 19, TypeScript, TailwindCSS v4, Radix UI
-- **Backend**: Node.js, Express, Socket.IO (with the Redis adapter, so the server can run more than one instance)
+- **Backend**: Bun, Express, Socket.IO (with the Redis adapter, so the server can run more than one instance)
 - **Database**: MongoDB (session data), Redis (matchmaking queues, rate limiting, session cache, match presence)
 - **AI Service**: Python, FastAPI/Uvicorn, OpenCV, Caffe Model
 
@@ -44,9 +44,13 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 
 ### Prerequisites
 
-- Node.js v18+
-- Python 3.9+
+- [Bun](https://bun.com) v1.1+ — the server's runtime and the package manager for both JS packages
+- [uv](https://docs.astral.sh/uv/) — installs the AI service's Python dependencies
+- Python 3.12
 - Docker (used for MongoDB and Redis; both are required)
+
+Node.js is no longer required. Bun executes the server's TypeScript directly, so
+there is no build step, no `dist/` layout and no runtime path-alias shim.
 
 ### 1. Start MongoDB and Redis
 
@@ -86,17 +90,21 @@ Each in its own terminal, from the repository root:
 
 ```bash
 # API + Socket.IO on :5000
-cd server && npm install && npm run dev
+cd server && bun install && bun run dev
 
 # AI verification service on :8000
 cd ai-model
-python3 -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+uv venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
 # UI on :5173
-cd client && npm install && npm run dev
+cd client && bun install && bun run dev
 ```
+
+`bun run typecheck` in `server/` runs `tsc --noEmit`. Type checking is now a
+separate step from running, because Bun strips types rather than checking them —
+so CI must run it explicitly.
 
 Open **http://localhost:5173**.
 
@@ -127,8 +135,8 @@ ECDH key exchange, ciphertext relay, room authorisation, and queue cleanup.
 The socket suites can also be run on their own against a running stack:
 
 ```bash
-VERIFY_BASE=http://localhost:3000 node server/scripts/verify-e2e.mjs      # 16 checks
-VERIFY_BASE=http://localhost:3000 node server/scripts/verify-rematch.mjs  # ~40s
+VERIFY_BASE=http://localhost:3000 bun server/scripts/verify-e2e.mjs      # 16 checks
+VERIFY_BASE=http://localhost:3000 bun server/scripts/verify-rematch.mjs  # ~40s
 ```
 
 `verify-rematch.mjs` is separate because it has to wait out the 30-second match
@@ -144,7 +152,7 @@ checklist.
 ## Deploying with Docker
 
 The production stack is five services: Caddy (TLS, routing, and serving the
-built frontend), the Node server, the Python AI service, MongoDB and Redis.
+built frontend), the Bun server, the Python AI service, MongoDB and Redis.
 
 ```bash
 ./azure_deploy.sh

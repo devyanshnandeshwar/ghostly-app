@@ -1,4 +1,3 @@
-import "module-alias/register";
 import http from "http";
 import dotenv from "dotenv";
 import app from "./app";

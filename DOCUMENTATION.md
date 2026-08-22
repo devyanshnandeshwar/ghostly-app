@@ -229,7 +229,7 @@ To further improve user experience and deployment speed, the architecture has be
 
 - **Frontend Code Splitting**: The React application uses `React.lazy()` and `Suspense` to lazily load heavyweight components (like the Chat screen and Video Verification interface). This significantly reduces the size of the initial JavaScript bundle, improving Time to Interactive (TTI).
 - **Nginx Response Compression**: The client side is served by Nginx, which is configured to use Gzip compression on static assets (`.js`, `.css`, `.html`). This minimizes bandwidth usage and speeds up load times globally.
-- **Optimized Docker Builds**: The `Dockerfile`s use multistage builds and efficient dependency installation commands (`npm ci` and caching steps) to reduce final image bloat and accelerate CI/CD workflows.
+- **Optimized Docker Builds**: The `Dockerfile`s use multistage builds and efficient dependency installation commands (`bun install --frozen-lockfile`, `uv pip install`, and caching steps) to reduce final image bloat and accelerate CI/CD workflows.
 
 ### Horizontal Scaling (Future Proofing)
 

@@ -1,14 +1,15 @@
-FROM node:20-alpine AS builder
+FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
 
 # 1. Copy ONLY package files first to maximize Docker layer caching
 COPY shared/package*.json ./shared/
-COPY client/package*.json ./client/
+COPY client/package.json client/bun.lock ./client/
 
 # 2. Install dependencies with speed optimizations (--no-audit --no-fund)
 WORKDIR /app/client
-RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund && npm cache clean --force
+# Not --production: the build needs devDependencies (vite, typescript).
+RUN bun install --frozen-lockfile
 
 # 3. Copy source code after installation so UI code changes don't bust node_modules cache
 WORKDIR /app
@@ -25,7 +26,7 @@ ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
 ENV VITE_BASE_PATH=$VITE_BASE_PATH
 
 WORKDIR /app/client
-RUN npm run build
+RUN bun run build
 
 # --- Serve with Nginx ---
 # Unprivileged variant: runs as the non-root "nginx" user, which cannot bind
