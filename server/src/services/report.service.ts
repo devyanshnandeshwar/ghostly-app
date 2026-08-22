@@ -1,10 +1,10 @@
-import { Report } from "../models/Report";
+import { Report, ReportReason } from "../models/Report";
 import { logger } from "../utils/logger";
 
 export const createReport = async (
     reporterId: string,
     reportedId: string,
-    reason: string = "Abusive Behavior",
+    reason: ReportReason = "Other",
     roomId?: string,
     description?: string
 ) => {

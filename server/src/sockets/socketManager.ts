@@ -10,7 +10,7 @@ import { reportSocketHandler } from "./report.socket";
 import { ClientToServerEvents, ServerToClientEvents } from "@shared/types/SocketEvents";
 import { IUserSession } from "@shared/types/User";
 
-interface SocketData {
+export interface SocketData {
     session: IUserSession;
     // activeMatch is deliberately absent: it lives in Redis via
     // presence.service so every instance can see it. publicKey stays here
@@ -31,6 +31,16 @@ export async function attachRedisAdapter(io: Server) {
 
     logger.info("Socket.IO Redis adapter attached");
 }
+
+/**
+ * A connected socket with its authenticated session attached.
+ *
+ * Handlers must use this rather than a bare Socket: with `Socket`, socket.data
+ * is `any`, which is how `session.sessionId` -- a field that exists on
+ * QueueUser but not on IUserSession -- silently compiled and disabled the skip
+ * cooldown entirely.
+ */
+export type SessionSocket = Socket<any, any, any, SocketData>;
 
 export function initializeSocketIO(httpServer: HttpServer) {
     const io = new Server<ClientToServerEvents, ServerToClientEvents, {}, SocketData>(httpServer, {

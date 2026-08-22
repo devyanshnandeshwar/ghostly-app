@@ -11,6 +11,15 @@ export const redisClient = createClient({
 redisClient.on("error", (err) => logger.error(`Redis Client Error: ${err}`));
 redisClient.on("connect", () => logger.info("Redis Connected"));
 
+// Resolves once connect() has been called and completed. The rate limiter's
+// Redis store is constructed at import time -- before start() connects -- so
+// it needs something to await rather than failing with ClientClosedError.
+let resolveReady: () => void;
+export const redisReady = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+});
+
 export const connectRedis = async () => {
     await redisClient.connect();
+    resolveReady();
 };
