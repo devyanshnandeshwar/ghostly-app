@@ -20,13 +20,12 @@ WORKDIR /app
 
 # OpenCV needs these at runtime, not just to build. libxcb1 in particular:
 # without it cv2 fails to import and the container crash-loops.
+# libxcb1 is the ONLY system library opencv-python-headless actually needs.
+# The previous list also pulled libgl1, which drags in 64 packages of mesa and
+# the OpenGL stack that a headless build never calls -- roughly 200MB for
+# nothing. Verified by running both DNN forward passes with only libxcb1.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 \
-    libgl1 \
     libxcb1 \
-    libxext6 \
-    libsm6 \
-    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/venv /opt/venv
@@ -34,12 +33,13 @@ ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV=/opt/venv
 
 # Copy app source and model files
-COPY ai-model/app/ ./app/
-COPY ai-model/*.pb ai-model/*.pbtxt ai-model/*.caffemodel ai-model/*.prototxt ./
+# Create the user BEFORE copying, so --chown sets ownership in place. A
+# `chown -R` afterwards rewrote all 48MB of model files into a second layer.
+RUN useradd --create-home --shell /usr/sbin/nologin appuser
 
-# Drop root: run as a dedicated unprivileged user.
-RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && chown -R appuser:appuser /app
+COPY --chown=appuser:appuser ai-model/app/ ./app/
+COPY --chown=appuser:appuser ai-model/*.pb ai-model/*.pbtxt ai-model/*.caffemodel ai-model/*.prototxt ./
+
 USER appuser
 
 EXPOSE 8000
