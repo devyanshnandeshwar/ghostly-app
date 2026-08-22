@@ -1,150 +1,196 @@
 import { useState } from "react";
+import { AlertCircle, ArrowRight, Lock } from "lucide-react";
+
 import api from "../services/client";
-import { User, FileText, ArrowRight, AlertCircle } from "lucide-react";
+import { useSession } from "../context/SessionContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 
 interface ProfileSetupProps {
-    onComplete: () => void;
+  onComplete: () => void;
+  /** Present when the user opened this to change an existing persona. */
+  onCancel?: () => void;
 }
 
-import { useSession } from "../context/SessionContext";
+const FREE_FILTERS_PER_DAY = 5;
+const BIO_LIMIT = 120;
 
-export function ProfileSetup({ onComplete }: ProfileSetupProps) {
-    const { session } = useSession();
-    const [nickname, setNickname] = useState(session?.nickname || "");
-    const [bio, setBio] = useState(session?.bio || "");
-    const [preference, setPreference] = useState(session?.preference || "any");
-    const [error, setError] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
+const PREFERENCES = [
+  { value: "any", label: "Anyone", note: "Always free" },
+  { value: "male", label: "Men", note: "Uses a filter" },
+  { value: "female", label: "Women", note: "Uses a filter" },
+] as const;
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError(null);
-        setLoading(true);
+export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
+  const { session } = useSession();
+  const [nickname, setNickname] = useState(session?.nickname === "Anonymous" ? "" : session?.nickname || "");
+  const [bio, setBio] = useState(session?.bio || "");
+  const [preference, setPreference] = useState<string>(session?.preference || "any");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-        try {
-            await api.post("/profile/update", {
-                // Not sanitized here on purpose: xssMiddleware sanitizes every
-                // request body server-side, and an attacker skips this UI anyway.
-                nickname,
-                bio,
-                preference
-            });
-            onComplete();
-        } catch (err: any) {
-            console.error("Profile update failed:", err);
-            setError(err.response?.data?.error || "Failed to update profile");
-        } finally {
-            setLoading(false);
-        }
-    };
+  const filtersUsed = session?.dailyFilterUsage ?? 0;
+  const filtersLeft = Math.max(0, FREE_FILTERS_PER_DAY - filtersUsed);
+  const filtersLocked = session?.dailyFilterUsage !== undefined && filtersLeft === 0;
 
-    return (
-        <Card className="w-full max-w-md mx-auto border-border/50 shadow-2xl">
-            <CardHeader className="text-center">
-                <CardTitle className="text-3xl font-bold text-foreground">
-                    Create Persona
-                </CardTitle>
-                <CardDescription>
-                    Choose a pseudonym. No real names.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="space-y-2">
-                        <Label htmlFor="nickname" className="text-xs font-medium uppercase tracking-widest text-muted-foreground ml-1">Nickname</Label>
-                        <div className="relative">
-                            <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                id="nickname"
-                                type="text"
-                                value={nickname}
-                                onChange={(e) => setNickname(e.target.value)}
-                                className="pl-9"
-                                placeholder="AnonymousGhost"
-                                minLength={3}
-                                maxLength={20}
-                                required
-                            />
-                        </div>
-                    </div>
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
 
-                    <div className="space-y-2">
-                        <Label htmlFor="bio" className="text-xs font-medium uppercase tracking-widest text-muted-foreground ml-1">Bio (Optional)</Label>
-                        <div className="relative">
-                            <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Textarea
-                                id="bio"
-                                value={bio}
-                                onChange={(e) => setBio(e.target.value)}
-                                className="pl-9 min-h-25 resize-none"
-                                placeholder="Here to talk about stars..."
-                                maxLength={120}
-                            />
-                            <div className="absolute right-3 bottom-3 text-xs text-muted-foreground">
-                                {bio.length}/120
-                            </div>
-                        </div>
-                    </div>
+    try {
+      await api.post("/profile/update", {
+        // Not sanitized here on purpose: xssMiddleware sanitizes every
+        // request body server-side, and an attacker skips this UI anyway.
+        nickname,
+        bio,
+        preference,
+      });
+      onComplete();
+    } catch (err: any) {
+      console.error("Profile update failed:", err);
+      setError(err.response?.data?.error || "Failed to update profile");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-                    <div className="space-y-2">
-                         <div className="flex justify-between items-end">
-                            <Label className="text-xs font-medium uppercase tracking-widest text-muted-foreground ml-1">Looking For</Label>
-                            {(session?.dailyFilterUsage !== undefined) && (
-                                <span className={`text-xs font-semibold ${session.dailyFilterUsage >= 5 ? "text-destructive" : "text-primary"}`}>
-                                    Free Matches Left: {Math.max(0, 5 - (session.dailyFilterUsage || 0))}/5
-                                </span>
-                            )}
-                         </div>
-                        <div className="grid grid-cols-3 gap-2">
-                            {["any", "male", "female"].map((option) => {
-                                const isLocked = (option !== "any") && (session?.dailyFilterUsage || 0) >= 5;
-                                
-                                return (
-                                <Button
-                                    key={option}
-                                    type="button"
-                                    variant={preference === option ? "default" : "outline"}
-                                    onClick={() => !isLocked && setPreference(option)}
-                                    className={`capitalize relative ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
-                                    disabled={isLocked}
-                                    title={isLocked ? "Daily limit reached for specific filters" : ""}
-                                >
-                                    {option}
-                                    {isLocked && <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-[1px] rounded-md"><span className="text-xs font-bold text-destructive">LOCKED</span></div>}
-                                </Button>
-                            )})}
-                        </div>
-                         {(session?.dailyFilterUsage || 0) >= 5 && (
-                             <p className="text-xs text-muted-foreground text-center mt-2">
-                                 Daily limit for specific gender matches reached. You can still match with "Any".
-                             </p>
-                         )}
-                    </div>
+  return (
+    <div className="mx-auto w-full max-w-md rounded-xl border bg-card p-6 elevation-mid sm:p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold">
+          {onCancel ? "Edit your persona" : "Create your persona"}
+        </h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          Pick something that is not your real name. You can change it later.
+        </p>
+      </div>
 
-                    {error && (
-                        <Alert variant="destructive">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertTitle>Error</AlertTitle>
-                            <AlertDescription>{error}</AlertDescription>
-                        </Alert>
-                    )}
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate={false}>
+        <div className="space-y-2">
+          <Label htmlFor="nickname">Nickname</Label>
+          <Input
+            id="nickname"
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="quietstorm"
+            minLength={3}
+            maxLength={20}
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+          />
+          <p id="nickname-hint" className="text-xs text-muted-foreground">
+            3 to 20 characters. Strangers see this and nothing else.
+          </p>
+        </div>
 
-                    <Button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full text-lg h-12"
-                    >
-                        {loading ? "Saving..." : "Start Matching"}
-                        {!loading && <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />}
-                    </Button>
-                </form>
-            </CardContent>
-        </Card>
-    );
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="bio">Bio</Label>
+            <span className="text-xs text-muted-foreground">Optional</span>
+          </div>
+          <Textarea
+            id="bio"
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            className="min-h-24 resize-none"
+            placeholder="here to talk about deep sea fish"
+            maxLength={BIO_LIMIT}
+          />
+          <p className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+            {bio.length}/{BIO_LIMIT}
+          </p>
+        </div>
+
+        <fieldset className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <legend className="text-sm font-medium">Match me with</legend>
+            {session?.dailyFilterUsage !== undefined && (
+              <span
+                className={cn(
+                  "font-mono text-xs tabular-nums",
+                  filtersLocked ? "text-muted-foreground" : "text-primary"
+                )}
+              >
+                {filtersLeft}/{FREE_FILTERS_PER_DAY} filters left
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Match me with">
+            {PREFERENCES.map((option) => {
+              const isLocked = option.value !== "any" && filtersLocked;
+              const isSelected = preference === option.value;
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  disabled={isLocked}
+                  onClick={() => setPreference(option.value)}
+                  title={isLocked ? "You have used today's gender filters" : undefined}
+                  className={cn(
+                    "flex flex-col items-center gap-0.5 rounded-lg border px-2 py-3 text-sm transition-all duration-150",
+                    "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                    isSelected
+                      ? "border-primary bg-primary/10 font-medium text-primary"
+                      : "text-foreground hover:bg-secondary",
+                    isLocked && "cursor-not-allowed opacity-55 hover:bg-transparent"
+                  )}
+                >
+                  <span className="flex items-center gap-1">
+                    {isLocked && <Lock className="size-3" />}
+                    {option.label}
+                  </span>
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    {isLocked ? "Locked today" : option.note}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {filtersLocked && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              You have used today's gender filters. Matching with anyone is still open, and
+              the filters come back at midnight.
+            </p>
+          )}
+        </fieldset>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Could not save</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          {onCancel && (
+            <Button type="button" variant="outline" onClick={onCancel} className="h-11">
+              Cancel
+            </Button>
+          )}
+          <Button
+            type="submit"
+            disabled={loading || nickname.trim().length < 3}
+            className="h-11 flex-1 gap-2 text-base"
+          >
+            {loading ? "Saving" : onCancel ? "Save changes" : "Continue"}
+            {!loading && <ArrowRight className="size-4" />}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
 }

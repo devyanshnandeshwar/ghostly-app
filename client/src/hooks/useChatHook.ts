@@ -4,7 +4,9 @@ import { generateKeyPair, exportKey, importKey, deriveSharedKey, encryptMessage,
 
 export function useChat(roomId: string | null) {
     const { socket } = useSocket();
-    const [messages, setMessages] = useState<{ text: string, sender: "me" | "partner" }[]>([]);
+    // "system" covers room events (a partner leaving), which must not be drawn
+    // as if the partner had typed them.
+    const [messages, setMessages] = useState<{ text: string, sender: "me" | "partner" | "system" }[]>([]);
     const [input, setInput] = useState("");
     const [isPartnerTyping, setIsPartnerTyping] = useState(false);
     const [isEncrypted, setIsEncrypted] = useState(false);
@@ -220,7 +222,7 @@ export function useChat(roomId: string | null) {
         if (!socket) return;
         
         const handleDisconnect = () => {
-             setMessages(prev => [...prev, { text: "Partner disconnected.", sender: "partner" }]);
+             setMessages(prev => [...prev, { text: "Your partner left the chat.", sender: "system" }]);
              setIsEncrypted(false);
              setSharedKey(null);
         };

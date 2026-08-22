@@ -18,7 +18,12 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+        // Radix wraps the children in a `display: table` element, so heights
+        // inside it resolve against the content instead of the viewport. Making
+        // that wrapper a full-height flex column lets a child use `flex-1` to
+        // fill the viewport, which is what anchors the chat thread to the bottom
+        // and centres empty states.
+        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1 [&>div]:!flex [&>div]:!min-h-full [&>div]:!flex-col"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
