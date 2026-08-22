@@ -3,8 +3,9 @@ import { addToQueue, removeFromQueue, setCooldown } from "../services/match.serv
 import { setActiveMatch, getActiveMatch, clearActiveMatch } from "../services/presence.service";
 import { checkDailyLimit, incrementDailyUsage, getQueueSessionView, updateSession } from "../services/session.service";
 import { logger } from "../utils/logger";
+import type { SessionSocket } from "./socketManager";
 
-export const matchSocketHandler = (io: Server, socket: Socket) => {
+export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
     socket.on("join-queue", async () => {
          try {
             const session = socket.data.session;
@@ -114,12 +115,12 @@ export const matchSocketHandler = (io: Server, socket: Socket) => {
     });
 };
 
-async function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
+async function handleLeaveChat(io: Server, socket: SessionSocket, isNext: boolean) {
     const activeMatch = await getActiveMatch(socket.id);
 
     // Clear Active Match Data immediately to prevent double processing
     await clearActiveMatch(socket.id);
-    socket.data.publicKey = null;
+    socket.data.publicKey = undefined;
 
     if (activeMatch) {
         const { roomId } = activeMatch;
@@ -132,7 +133,7 @@ async function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
         const roomSockets = await io.in(roomId).fetchSockets();
         for (const s of roomSockets) {
             s.leave(roomId);
-            s.data.publicKey = null;
+            s.data.publicKey = undefined;
             await clearActiveMatch(s.id);
         }
     }
@@ -157,9 +158,11 @@ async function handleLeaveChat(io: Server, socket: Socket, isNext: boolean) {
             
             // Implementation Choice: Emit "requeue-in" to client, let client wait and re-emit "join-queue".
             // This allows UI to show "Searching in 5..."
-            socket.emit("queue-cooldown", { remaining: 5 }); 
-            // Actually, let's set the cooldown in backend so if they force it, it fails.
-            setCooldown(session.sessionId);
+            socket.emit("queue-cooldown", { remaining: 5 });
+            // _id, not sessionId: sessionId is a QueueUser field and is
+            // undefined here, so this wrote ghosty:cooldown:undefined and the
+            // skip cooldown never applied to anyone.
+            await setCooldown(session._id.toString());
         }
     }
 }

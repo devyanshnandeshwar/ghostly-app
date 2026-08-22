@@ -15,6 +15,16 @@ import { xssMiddleware } from "./middlewares/xss.middleware";
 
 const app = express();
 
+// Exactly one proxy (Caddy) sits in front. Without this, req.ip is Caddy's
+// container IP for EVERY request, so all unauthenticated callers shared a
+// single rate-limit bucket -- 100 requests from anyone locked out every new
+// visitor, because /api/session/init is the first call each one makes.
+//
+// Deliberately 1, not `true`: trusting every hop lets a client spoof
+// X-Forwarded-For and evade the limiter entirely. With a hop count, Express
+// takes the entry Caddy appended and ignores anything the client invented.
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.use(compression());
 app.use(cors({

@@ -1,6 +1,19 @@
 import mongoose from "mongoose";
 import { config } from "../config/env";
 
+// Single source of truth: the schema enum, the service signature and the
+// socket handler all derive from this.
+export const REPORT_REASONS = [
+    "Abusive Behavior",
+    "Harassment",
+    "Nudity",
+    "Spam",
+    "Underage",
+    "Other"
+] as const;
+
+export type ReportReason = (typeof REPORT_REASONS)[number];
+
 const ReportSchema = new mongoose.Schema(
     {
         reporterId: {
@@ -13,11 +26,15 @@ const ReportSchema = new mongoose.Schema(
         },
         reason: {
             type: String,
-            default: "Unspecified"
+            default: "Other",
+            enum: REPORT_REASONS
         },
         description: {
             type: String,
-            required: false
+            required: false,
+            // Belt and braces with the socket handler: the cap belongs on the
+            // schema so a future writer cannot bypass it.
+            maxlength: 500
         },
         roomId: {
             type: String,
