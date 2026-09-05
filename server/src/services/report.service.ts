@@ -1,6 +1,9 @@
 import { Report, ReportReason } from "../models/Report";
 import { logger } from "../utils/logger";
 
+const REPORT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MAX_REPORTS_PER_WINDOW = 3;
+
 export const createReport = async (
     reporterId: string,
     reportedId: string,
@@ -8,17 +11,20 @@ export const createReport = async (
     roomId?: string,
     description?: string
 ) => {
-    // 1. Abuse Limit: Max 3 reports per day
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 1. Abuse limit: at most 3 reports per rolling 24 hours.
+    //
+    // Rolling, not a calendar day: setHours(0,0,0,0) used the container's local
+    // midnight, so the reset landed at an arbitrary hour of the user's day and
+    // could be gamed by waiting for the boundary.
+    const windowStart = new Date(Date.now() - REPORT_WINDOW_MS);
 
-    const dailyCount = await Report.countDocuments({
+    const recentCount = await Report.countDocuments({
         reporterId,
-        timestamp: { $gte: today }
+        timestamp: { $gte: windowStart }
     });
 
-    if (dailyCount >= 3) {
-        throw new Error("Daily report limit reached. Please try again tomorrow.");
+    if (recentCount >= MAX_REPORTS_PER_WINDOW) {
+        throw new Error("Report limit reached. Please try again later.");
     }
 
     // 2. Duplicate Check

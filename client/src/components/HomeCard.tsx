@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Ghost, SlidersHorizontal, X } from "lucide-react";
 
+import { FREE_FILTERS_PER_DAY } from "@shared/constants";
+
 import { Button } from "@/components/ui/button";
 import { useSession } from "../context/SessionContext";
 
@@ -21,6 +23,12 @@ export function HomeCard({ status, onFindMatch, onCancel, onEditProfile }: HomeC
   const { session } = useSession();
   const waiting = status === "waiting";
   const preference = PREFERENCE_LABEL[session?.preference ?? "any"] ?? "anyone";
+  // Without this the card confidently states a filter the server is about to
+  // refuse, and the user learns about it from an error alert instead.
+  const filterSpent =
+    session?.filtersUsedToday !== undefined &&
+    session.filtersUsedToday >= FREE_FILTERS_PER_DAY &&
+    session.preference !== "any";
 
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border bg-card p-8 text-center elevation-mid animate-in fade-in zoom-in-98 duration-400">
@@ -42,7 +50,9 @@ export function HomeCard({ status, onFindMatch, onCancel, onEditProfile }: HomeC
       <p className="mx-auto mt-2 max-w-[34ch] text-sm leading-relaxed text-muted-foreground">
         {waiting
           ? "You are in the queue. This stays open until someone matching your filter appears."
-          : `You are set to meet ${preference}. Nothing you say here is stored after the chat ends.`}
+          : filterSpent
+            ? `Your ${preference} filter is spent for now. Switch to anyone, or wait for it to come back.`
+            : `You are set to meet ${preference}. Nothing you say here is stored after the chat ends.`}
       </p>
 
       <div className="mt-7 space-y-3">
@@ -56,7 +66,11 @@ export function HomeCard({ status, onFindMatch, onCancel, onEditProfile }: HomeC
           </>
         ) : (
           <>
-            <Button onClick={onFindMatch} className="h-12 w-full text-base">
+            <Button
+              onClick={onFindMatch}
+              disabled={filterSpent}
+              className="h-12 w-full text-base"
+            >
               Find a match
             </Button>
             <Button

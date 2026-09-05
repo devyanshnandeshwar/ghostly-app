@@ -1,10 +1,9 @@
 import { AlertTriangle, Ghost } from "lucide-react";
+import { FREE_FILTERS_PER_DAY } from "@shared/constants";
 
 import { ModeToggle } from "./mode-toggle";
 import { useSession } from "../context/SessionContext";
 import { useCountdown } from "../hooks/useCountdown";
-
-const FREE_FILTERS_PER_DAY = 5;
 
 interface NavbarProps {
   onLogoClick?: () => void;
@@ -12,12 +11,14 @@ interface NavbarProps {
 
 export function Navbar({ onLogoClick }: NavbarProps) {
   const { session } = useSession();
-  const timeLeft = useCountdown(session?.lastFilterUsageDate);
+  const timeLeft = useCountdown(session?.filtersResetInSeconds);
 
   const isLoggedIn = Boolean(session?.isVerified && session?.nickname);
-  const used = session?.dailyFilterUsage ?? 0;
+  // filtersUsedToday, not dailyFilterUsage: the latter is a lifetime counter
+  // that never resets, so reading it here locked the pill at 0/5 forever.
+  const used = session?.filtersUsedToday ?? 0;
   const filtersLeft = Math.max(0, FREE_FILTERS_PER_DAY - used);
-  const filtersExhausted = session?.dailyFilterUsage !== undefined && filtersLeft === 0;
+  const filtersExhausted = session?.filtersUsedToday !== undefined && filtersLeft === 0;
   const reportCount = session?.reportsAgainst || 0;
 
   return (
@@ -36,14 +37,14 @@ export function Navbar({ onLogoClick }: NavbarProps) {
         </button>
 
         <div className="ml-auto flex items-center gap-2">
-          {isLoggedIn && session?.dailyFilterUsage !== undefined && (
+          {isLoggedIn && session?.filtersUsedToday !== undefined && (
             <span
               title={
                 filtersExhausted
-                  ? "You have used today's gender filters. Matching with Any is still open."
-                  : "Matches left today using a specific gender filter"
+                  ? "Your gender filters are spent. Matching with Anyone is still open."
+                  : "Filtered matches left in this 24-hour window"
               }
-              className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs sm:inline-flex ${
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
                 filtersExhausted
                   ? "border-transparent bg-secondary text-muted-foreground"
                   : "text-muted-foreground"

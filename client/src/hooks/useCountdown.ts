@@ -1,48 +1,54 @@
 import { useState, useEffect } from 'react';
 
-export const useCountdown = (targetDate: string | Date | undefined) => {
-    const [timeLeft, setTimeLeft] = useState("");
+/**
+ * Time remaining until the filter allowance resets, as HH:MM:SS.
+ *
+ * Driven by the seconds the server reports for its own rolling 24-hour window.
+ * This previously counted to the viewer's local midnight, which matched a
+ * backend that compared `new Date().setHours(0,0,0,0)` against
+ * `lastFilterUsageDate`. Both sides have since moved to a rolling window, so
+ * the number shown is now the number actually enforced -- and it no longer
+ * depends on the viewer's timezone agreeing with the server's.
+ */
+const formatRemaining = (msRemaining: number): string => {
+    if (msRemaining <= 0) return "";
+
+    const total = Math.floor(msRemaining / 1000);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+
+    return [hours, minutes, seconds]
+        .map((unit) => unit.toString().padStart(2, '0'))
+        .join(':');
+};
+
+export const useCountdown = (secondsRemaining: number | undefined) => {
+    // Seeded from a lazy initialiser rather than "" plus a setState in the
+    // effect body: the old version showed nothing for a full second before the
+    // first interval tick, and reset state from inside an effect.
+    const [timeLeft, setTimeLeft] = useState(() =>
+        secondsRemaining ? formatRemaining(secondsRemaining * 1000) : ""
+    );
 
     useEffect(() => {
-        if (!targetDate) {
-            setTimeLeft("");
-            return;
-        }
+        if (!secondsRemaining || secondsRemaining <= 0) return;
+
+        // Anchored to a wall-clock deadline rather than decremented per tick, so
+        // a backgrounded tab that misses intervals does not drift slow.
+        const deadline = Date.now() + secondsRemaining * 1000;
+        setTimeLeft(formatRemaining(deadline - Date.now()));
 
         const interval = setInterval(() => {
-            const now = new Date().getTime();
-            // const resetTime = new Date(targetDate).setHours(24, 0, 0, 0); // Next midnight relative to usage? 
-            // Actually the prompt says: "Counter resets every 24 hours". 
-            // In `match.socket.ts`, we check:
-            // const today = new Date().setHours(0, 0, 0, 0);
-            // const lastUsage = new Date(currentSession.lastFilterUsageDate || 0).setHours(0, 0, 0, 0);
-            // So the reset effectively happens at midnight local server time (or UTC depending on Env).
-            // Let's assume midnight relative to the user for now or calculate "tomorrow 00:00".
-            
-            // To be precise with the backend logic `new Date().setHours(0,0,0,0)`, the reset is technically AVAILABLE as soon as the day changes.
-            // So we count down to the NEXT midnight.
-            
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(0, 0, 0, 0);
-            
-            const distance = tomorrow.getTime() - now;
-
-            if (distance < 0) {
-                clearInterval(interval);
-                setTimeLeft(""); 
-                // Ideally trigger a refresh here but for now just hide timer
-            } else {
-                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-                setTimeLeft(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-            }
+            const next = formatRemaining(deadline - Date.now());
+            setTimeLeft(next);
+            if (!next) clearInterval(interval);
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [targetDate]);
+    }, [secondsRemaining]);
 
-    return timeLeft;
+    // Derived rather than cleared through state, so there is no stale value to
+    // flush when the caller stops passing a value.
+    return secondsRemaining ? timeLeft : "";
 };

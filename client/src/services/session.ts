@@ -8,8 +8,13 @@ export interface Session {
     bio?: string;
     gender?: string;
     preference?: string;
+    /** Lifetime filtered matches. Analytics only -- not the quota. */
     dailyFilterUsage?: number;
     lastFilterUsageDate?: string;
+    /** Filtered matches spent in the current rolling window. This is the quota. */
+    filtersUsedToday?: number;
+    /** Seconds until the allowance resets, 0 when no window is open. */
+    filtersResetInSeconds?: number;
     reportsAgainst?: number;
     userHash?: string;
 }

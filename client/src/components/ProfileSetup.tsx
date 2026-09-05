@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AlertCircle, ArrowRight, Lock } from "lucide-react";
+import { FREE_FILTERS_PER_DAY } from "@shared/constants";
 
 import api from "../services/client";
 import { useSession } from "../context/SessionContext";
@@ -16,7 +17,6 @@ interface ProfileSetupProps {
   onCancel?: () => void;
 }
 
-const FREE_FILTERS_PER_DAY = 5;
 const BIO_LIMIT = 120;
 
 const PREFERENCES = [
@@ -33,13 +33,26 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const filtersUsed = session?.dailyFilterUsage ?? 0;
+  // filtersUsedToday is the enforced allowance. dailyFilterUsage is a lifetime
+  // counter that never resets, and reading it here locked these controls
+  // permanently after five filtered matches ever.
+  const filtersUsed = session?.filtersUsedToday ?? 0;
   const filtersLeft = Math.max(0, FREE_FILTERS_PER_DAY - filtersUsed);
-  const filtersLocked = session?.dailyFilterUsage !== undefined && filtersLeft === 0;
+  const filtersLocked = session?.filtersUsedToday !== undefined && filtersLeft === 0;
+  // The radios only stop a locked value being SELECTED. A preference saved
+  // before the allowance ran out is still in state, so the submit path needs
+  // its own guard.
+  const submittingLockedFilter = filtersLocked && preference !== "any";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (submittingLockedFilter) {
+      setError("Your gender filters are spent for now. Choose Anyone to keep matching.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -112,7 +125,7 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
         <fieldset className="space-y-2">
           <div className="flex items-baseline justify-between gap-2">
             <legend className="text-sm font-medium">Match me with</legend>
-            {session?.dailyFilterUsage !== undefined && (
+            {session?.filtersUsedToday !== undefined && (
               <span
                 className={cn(
                   "font-mono text-xs tabular-nums",
@@ -152,7 +165,7 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
                     {option.label}
                   </span>
                   <span className="text-[11px] font-normal text-muted-foreground">
-                    {isLocked ? "Locked today" : option.note}
+                    {isLocked ? "Spent" : option.note}
                   </span>
                 </button>
               );
@@ -161,8 +174,8 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
 
           {filtersLocked && (
             <p className="text-xs leading-relaxed text-muted-foreground">
-              You have used today's gender filters. Matching with anyone is still open, and
-              the filters come back at midnight.
+              Your gender filters are spent. Matching with anyone is still open, and the
+              filters come back 24 hours after you first used one.
             </p>
           )}
         </fieldset>
@@ -183,7 +196,7 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
           )}
           <Button
             type="submit"
-            disabled={loading || nickname.trim().length < 3}
+            disabled={loading || nickname.trim().length < 3 || submittingLockedFilter}
             className="h-11 flex-1 gap-2 text-base"
           >
             {loading ? "Saving" : onCancel ? "Save changes" : "Continue"}

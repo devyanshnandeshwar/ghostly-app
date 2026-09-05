@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { createSession, getSessionByDeviceId, touchLastActive } from "../services/session.service";
 import { issueSessionToken, verifySessionToken } from "../utils/token";
+import { getFilterUsage } from "../services/quota.service";
 
 export const init = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -28,8 +29,16 @@ export const init = async (req: Request, res: Response, next: NextFunction) => {
             issuedToken = issueSessionToken(session.deviceId);
         }
 
+        // The enforced allowance, read from Redis. The client used to derive this
+        // from dailyFilterUsage below, which is a lifetime counter that never
+        // resets -- so the filter UI locked permanently after five filtered
+        // matches ever.
+        const { used, resetInSeconds } = await getFilterUsage(session._id.toString());
+
         res.json({
             token: issuedToken,
+            filtersUsedToday: used,
+            filtersResetInSeconds: resetInSeconds,
             _id: session._id,
             isVerified: session.isVerified,
             gender: session.gender,
@@ -38,6 +47,7 @@ export const init = async (req: Request, res: Response, next: NextFunction) => {
             bio: session.bio,
             userHash: session.userHash,
             lastActive: session.lastActive,
+            // Lifetime total, for analytics. Not the quota -- see filtersUsedToday.
             dailyFilterUsage: session.dailyFilterUsage,
             lastFilterUsageDate: session.lastFilterUsageDate,
             reportsAgainst: session.reportsAgainst

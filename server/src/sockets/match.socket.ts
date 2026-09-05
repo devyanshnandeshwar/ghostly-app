@@ -1,7 +1,8 @@
 import { Server, Socket } from "socket.io";
 import { addToQueue, removeFromQueue, setCooldown, SKIP_COOLDOWN_SECONDS } from "../services/match.service";
 import { setActiveMatch, getActiveMatch, clearActiveMatch } from "../services/presence.service";
-import { checkDailyLimit, incrementDailyUsage, getQueueSessionView, updateSession } from "../services/session.service";
+import { getQueueSessionView, updateSession } from "../services/session.service";
+import { hasFilterQuota, consumeFilter } from "../services/quota.service";
 import { logger } from "../utils/logger";
 import type { SessionSocket } from "./socketManager";
 
@@ -24,7 +25,7 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
 
             // Freemium Limits Logic
             if (currentSession.preference !== "any") {
-                const isAllowed = await checkDailyLimit(currentSession._id);
+                const isAllowed = await hasFilterQuota(currentSession._id);
                 if (!isAllowed) {
                      socket.emit("queue-error", "Daily limit reached for specific gender filters. Switch to 'Any' to continue.");
                      return;
@@ -165,9 +166,11 @@ async function updateMatchHistory(id1: string, id2: string) {
 async function updateUsage(user: any) {
      if (user.preference !== "any") {
         logger.info(`[Usage Limit] Incrementing usage for ${user.nickname} (${user.sessionId}) due to preference: ${user.preference}`);
-        await incrementDailyUsage(user.sessionId);
-        
-        // DB Persistence (for analytics)
+        await consumeFilter(user.sessionId);
+
+        // Lifetime counter, kept for analytics only. The enforced allowance is
+        // the Redis window in quota.service -- these two must not be confused
+        // again, which is why they no longer share a name.
         await updateSession(user.sessionId, {
             $inc: { dailyFilterUsage: 1 },
             lastFilterUsageDate: new Date()

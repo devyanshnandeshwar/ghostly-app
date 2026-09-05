@@ -1,0 +1,5 @@
+[test]
+# config/env.ts reads these at import. dotenv does not override values already
+# in process.env, so pinning them here keeps tests deterministic regardless of
+# the developer's local .env.
+preload = ["./src/testing/setup.ts"]

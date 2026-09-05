@@ -2,3 +2,8 @@ node_modules
 dist
 .env
 *.log
+
+# Test code must not ship in the runtime image.
+*.test.ts
+src/testing
+bunfig.toml
