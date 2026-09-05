@@ -74,25 +74,31 @@ export function initializeSocketIO(httpServer: HttpServer) {
 }
 
 import { redisClient } from "../config/redis";
+import { resolveClientKey } from "./clientKey";
+
+// Per identity, not per proxy. resolveClientKey prefers the verified session and
+// falls back to the real client IP taken from X-Forwarded-For at the same hop
+// depth Express trusts -- see clientKey.ts for why the old key was global.
+const CONNECT_LIMIT = 60;
+const CONNECT_WINDOW_SECONDS = 60;
 
 async function rateLimitMiddleware(socket: Socket, next: (err?: Error) => void) {
-    const ip = socket.handshake.address || "unknown";
-    const LIMIT = 20; 
-    const WINDOW_MS = 60000;
-    
-    const key = `rate_limit:${ip}`;
-    
+    const clientKey = resolveClientKey(socket.handshake);
+    const key = `rate_limit:${clientKey}`;
+
     try {
         const count = await redisClient.incr(key);
-        if (count === 1) {
-            await redisClient.expire(key, Math.floor(WINDOW_MS / 1000));
-        }
-        
-        if (count > LIMIT) {
-            logger.warn(`Rate limit blocked IP: ${ip}`);
+
+        // Set the TTL on every increment rather than only the first. A dropped
+        // EXPIRE used to strand the counter with no expiry at all, locking that
+        // key out permanently.
+        await redisClient.expire(key, CONNECT_WINDOW_SECONDS);
+
+        if (count > CONNECT_LIMIT) {
+            logger.warn(`Rate limit blocked ${clientKey}`);
             return next(new Error("Too many connection attempts."));
         }
-        
+
         next();
     } catch (error) {
         logger.error(`Redis rate limit error: ${error}`);

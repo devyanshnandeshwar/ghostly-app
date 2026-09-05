@@ -14,8 +14,12 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "resolveJsonModule": true,
+    // "bun" supplies the bun:test module declarations for *.test.ts. It sits
+    // alongside "node" rather than replacing it: the server runs on Bun but the
+    // source is written against Node's stdlib types.
     "types": [
-      "node"
+      "node",
+      "bun"
     ],
     // No baseUrl: it is deprecated in TS 7. Without it, "paths" resolve
     // relative to this file's directory, which gives the same result here.
