@@ -1,5 +1,5 @@
 import { Server, Socket } from "socket.io";
-import { addToQueue, removeFromQueue, setCooldown } from "../services/match.service";
+import { addToQueue, removeFromQueue, setCooldown, SKIP_COOLDOWN_SECONDS } from "../services/match.service";
 import { setActiveMatch, getActiveMatch, clearActiveMatch } from "../services/presence.service";
 import { checkDailyLimit, incrementDailyUsage, getQueueSessionView, updateSession } from "../services/session.service";
 import { logger } from "../utils/logger";
@@ -139,30 +139,17 @@ async function handleLeaveChat(io: Server, socket: SessionSocket, isNext: boolea
     }
 
     if (isNext) {
-        // Apply Cooldown to requester
         const session = socket.data.session;
         if (session) {
-            // Apply 5 second cooldown for skipping
-            // We use a custom cooldown mechanism or re-use addToQueue's check
-            // For now, let's just re-join the queue, and addToQueue will handle basic cooldowns if we set them
-            // But we want a SPECIFIC "skip cooldown" maybe?
-            // The prompt says "Apply skip cooldown (example: 10s)"
-            // let's manually set a cooldown in the service
-            
-            // Re-join queue automatically after a short delay on client side? 
-            // OR server side? 
-            // The prompt says "Automatically rejoin matchmaking queue after cooldown"
-            // It is better to let the CLIENT emit "join-queue" again after showing a countdown.
-            // But the backend requirements say "Add requester back to queue". 
-            // If we add back immediately, they might match the same person or spam.
-            
-            // Implementation Choice: Emit "requeue-in" to client, let client wait and re-emit "join-queue".
-            // This allows UI to show "Searching in 5..."
-            socket.emit("queue-cooldown", { remaining: 5 });
             // _id, not sessionId: sessionId is a QueueUser field and is
             // undefined here, so this wrote ghosty:cooldown:undefined and the
             // skip cooldown never applied to anyone.
             await setCooldown(session._id.toString());
+
+            // Report the cooldown we actually enforced. The client shows a
+            // countdown from this, so a number that does not match the Redis
+            // TTL is a countdown that expires into a refusal.
+            socket.emit("queue-cooldown", { remaining: SKIP_COOLDOWN_SECONDS });
         }
     }
 }

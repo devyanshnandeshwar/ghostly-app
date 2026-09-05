@@ -182,9 +182,17 @@ export async function removeFromQueue(socketId: string) {
     }
 }
 
+/**
+ * How long a skip blocks the next search.
+ *
+ * Exported because match.socket.ts reports this number to the client. The two
+ * used to disagree -- the client was told 5 and Redis was given 30 -- so every
+ * skip produced a countdown that lied and then a refusal 25 seconds later.
+ */
+export const SKIP_COOLDOWN_SECONDS = 5;
+
 export async function setCooldown(sessionId: string) {
-    // 30 Seconds Cooldown
-    await redisClient.setEx(getCooldownKey(sessionId), 30, "1");
+    await redisClient.setEx(getCooldownKey(sessionId), SKIP_COOLDOWN_SECONDS, "1");
 }
 
 // Every queue key that can exist, so reconciliation never has to SCAN (and can
