@@ -3,7 +3,6 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import sessionRoutes from "./routes/session.routes";
-import { verifySession } from "./middlewares/session.middleware";
 import verifyRoutes from "./routes/verify.routes";
 import profileRoutes from "./routes/profile.routes";
 import adminRoutes from "./routes/admin.routes";
@@ -43,15 +42,6 @@ app.use("/api/reports", reportRoutes);
 
 app.get("/health", (_, res) => {
     res.json({ status: "OK" });
-});
-
-app.get("/api/protected", verifySession, (req, res) => {
-    const session = (req as any).session;
-
-    res.json({
-        message: "Session verified",
-        sessionId: session._id
-    });
 });
 
 app.use(errorHandler);
