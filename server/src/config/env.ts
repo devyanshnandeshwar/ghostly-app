@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { buildCorsOrigins } from "./cors";
 
 // Load .env file
 const envPath = path.resolve(__dirname, "../../.env");
@@ -15,15 +16,16 @@ const clientUrl = process.env.CLIENT_URL || defaultClientUrl;
 
 const INSECURE_SESSION_SECRET = "supersecret";
 
-// Allow production URL + localhost so both EC2 and local Docker/dev work
+const nodeEnv = process.env.NODE_ENV || "development";
+
 export const config = {
     PORT: process.env.PORT || 5000,
     MONGO_URI: process.env.MONGO_URI || "mongodb://localhost:27017/ghostly",
     CLIENT_URL: clientUrl,
-    CORS_ORIGINS: [clientUrl, "http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"].filter(
-        (origin, i, arr) => arr.indexOf(origin) === i
-    ),
-    NODE_ENV: process.env.NODE_ENV || "development",
+    // Production allows exactly the configured client origin; the localhost
+    // entries are development-only. See cors.ts.
+    CORS_ORIGINS: buildCorsOrigins(clientUrl, nodeEnv),
+    NODE_ENV: nodeEnv,
     SESSION_SECRET: process.env.SESSION_SECRET || INSECURE_SESSION_SECRET,
     // No default: admin routes fail closed when this is unset.
     ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
