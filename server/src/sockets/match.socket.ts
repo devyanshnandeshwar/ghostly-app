@@ -32,7 +32,7 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
                 }
             }
 
-            const result = await addToQueue({
+            const result = addToQueue({
                 socketId: socket.id,
                 sessionId: currentSession._id,
                 nickname: currentSession.nickname || "Anonymous",
@@ -43,12 +43,11 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
             });
 
             if (result && "error" in result) {
-                // @ts-ignore
                 socket.emit("queue-cooldown", { remaining: result.remaining });
                 return;
             }
 
-            const match = result as { user1: any, user2: any } | null;
+            const match = result;
 
             if (match) {
                 const roomId = `room-${match.user1.socketId}-${match.user2.socketId}`;
@@ -109,7 +108,7 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
     });
 
     socket.on("disconnect", async () => {
-        await removeFromQueue(socket.id);
+        removeFromQueue(socket.id);
         if (await getActiveMatch(socket.id)) {
             await handleLeaveChat(io, socket, false);
         }

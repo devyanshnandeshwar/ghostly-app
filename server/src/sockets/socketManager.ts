@@ -1,14 +1,13 @@
 import { Server, Socket } from "socket.io";
 import { Server as HttpServer } from "http";
-import { createAdapter } from "@socket.io/redis-adapter";
 import { config } from "../config/env";
 import { logger } from "../utils/logger";
 import { socketAuth } from "./auth.socket";
 import { matchSocketHandler } from "./match.socket";
 import { chatSocketHandler } from "./chat.socket";
 import { reportSocketHandler } from "./report.socket";
-import { ClientToServerEvents, ServerToClientEvents } from "@shared/types/SocketEvents";
-import { IUserSession } from "@shared/types/User";
+import { ClientToServerEvents, ServerToClientEvents } from "../types/SocketEvents";
+import { IUserSession } from "../types/User";
 
 export interface SocketData {
     session: IUserSession;
@@ -18,19 +17,11 @@ export interface SocketData {
     publicKey?: JsonWebKey;
 }
 
-/**
- * Wires Socket.IO through Redis so rooms and emits cross instance boundaries.
- * Must run after connectRedis(); without it the server is single-instance only.
- */
-export async function attachRedisAdapter(io: Server) {
-    const subClient = redisClient.duplicate();
-    subClient.on("error", (err) => logger.error(`Redis adapter sub error: ${err}`));
-
-    await subClient.connect();
-    io.adapter(createAdapter(redisClient as any, subClient as any));
-
-    logger.info("Socket.IO Redis adapter attached");
-}
+// The Socket.IO Redis adapter is gone. It exists to carry rooms and emits
+// between instances; this deployment runs one, so it bought nothing and cost a
+// second persistent Redis connection plus pub/sub traffic on every room event
+// -- which Upstash bills per command. fetchSockets() and socketsJoin() work
+// unchanged against the default in-process adapter.
 
 /**
  * A connected socket with its authenticated session attached.

@@ -3,6 +3,7 @@ import { UpdateQuery } from "mongoose";
 import { UserSession } from "../models/UserSession";
 import { logger } from "../utils/logger";
 import { redisClient } from "../config/redis";
+import { TtlCache } from "./ttlCache";
 
 /**
  * Creates a brand new session with a server-generated identifier.
@@ -42,19 +43,14 @@ export interface QueueSessionView {
 
 const SESSION_CACHE_TTL_SECONDS = 60;
 
-function getSessionCacheKey(sessionId: string): string {
-    return `session:view:${sessionId}`;
-}
+// In process, not Redis. This is a cache: its only job was to spare a Mongo
+// read, and routing it through a network hop to do that on a single instance
+// was strictly worse than a map.
+const sessionViews = new TtlCache<QueueSessionView>(SESSION_CACHE_TTL_SECONDS * 1000);
 
 export async function getQueueSessionView(sessionId: string): Promise<QueueSessionView | null> {
-    const cacheKey = getSessionCacheKey(sessionId);
-
-    try {
-        const cached = await redisClient.get(cacheKey);
-        if (cached) return JSON.parse(cached);
-    } catch (error: any) {
-        logger.warn(`Session cache read failed: ${error.message}`);
-    }
+    const cached = sessionViews.get(sessionId);
+    if (cached) return cached;
 
     const session = await UserSession.findById(sessionId);
     if (!session) return null;
@@ -69,22 +65,14 @@ export async function getQueueSessionView(sessionId: string): Promise<QueueSessi
         pastMatches: session.pastMatches || []
     };
 
-    try {
-        await redisClient.setEx(cacheKey, SESSION_CACHE_TTL_SECONDS, JSON.stringify(view));
-    } catch (error: any) {
-        logger.warn(`Session cache write failed: ${error.message}`);
-    }
+    sessionViews.set(sessionId, view);
 
     return view;
 }
 
 /** Call whenever the cached fields change, so the next read is fresh. */
 export async function invalidateSessionCache(sessionId: string) {
-    try {
-        await redisClient.del(getSessionCacheKey(sessionId));
-    } catch (error: any) {
-        logger.warn(`Session cache invalidation failed: ${error.message}`);
-    }
+    sessionViews.delete(sessionId);
 }
 
 // Exactly the fields mirrored into QueueSessionView above. Keep the two in step:

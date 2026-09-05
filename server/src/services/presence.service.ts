@@ -1,56 +1,22 @@
-import { redisClient } from "../config/redis";
-import { logger } from "../utils/logger";
+import { InMemoryPresenceStore, type ActiveMatch, type PresenceStore } from "./presence.store";
 
 /**
- * Which match a socket is currently in.
- *
- * This lived in socket.data, which is per-process memory. With more than one
- * server instance the authorization guards in chat.socket would read undefined
- * for any socket matched on another replica and silently reject legitimate
- * traffic, so it lives in Redis where every instance can see it.
+ * Process-wide presence, behind the store interface so the backing choice is
+ * one line rather than a change to every caller. See presence.store.ts for why
+ * this is in memory rather than Redis.
  */
+const store: PresenceStore = new InMemoryPresenceStore();
 
-const ACTIVE_MATCH_PREFIX = "ghosty:activematch";
-
-// Long enough to outlive any real conversation, short enough that a crashed
-// instance's entries do not linger forever.
-const ACTIVE_MATCH_TTL_SECONDS = 60 * 60 * 4;
-
-export interface ActiveMatch {
-    partnerSessionId: string;
-    roomId: string;
-}
-
-function getKey(socketId: string): string {
-    return `${ACTIVE_MATCH_PREFIX}:${socketId}`;
-}
+export type { ActiveMatch };
 
 export async function setActiveMatch(socketId: string, match: ActiveMatch) {
-    try {
-        await redisClient.setEx(
-            getKey(socketId),
-            ACTIVE_MATCH_TTL_SECONDS,
-            JSON.stringify(match)
-        );
-    } catch (error: any) {
-        logger.error(`Failed to record active match for ${socketId}: ${error.message}`);
-    }
+    await store.set(socketId, match);
 }
 
 export async function getActiveMatch(socketId: string): Promise<ActiveMatch | null> {
-    try {
-        const raw = await redisClient.get(getKey(socketId));
-        return raw ? JSON.parse(raw) : null;
-    } catch (error: any) {
-        logger.error(`Failed to read active match for ${socketId}: ${error.message}`);
-        return null;
-    }
+    return store.get(socketId);
 }
 
 export async function clearActiveMatch(socketId: string) {
-    try {
-        await redisClient.del(getKey(socketId));
-    } catch (error: any) {
-        logger.warn(`Failed to clear active match for ${socketId}: ${error.message}`);
-    }
+    await store.clear(socketId);
 }

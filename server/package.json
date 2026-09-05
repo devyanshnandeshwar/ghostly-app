@@ -9,11 +9,13 @@
     "test": "bun test --isolate",
     "typecheck": "tsc --noEmit"
   },
+  "engines": {
+    "bun": ">=1.4.1"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@socket.io/redis-adapter": "^8.3.0",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
