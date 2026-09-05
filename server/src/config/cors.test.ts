@@ -40,3 +40,39 @@ describe("buildCorsOrigins", () => {
         expect(origins[0]).toBe("https://staging.example.com");
     });
 });
+
+describe("buildCorsOrigins across a split deployment", () => {
+    // The SPA now lives on Vercel and the API on Render, so CORS stops being
+    // incidental and becomes the thing that decides whether the product works
+    // at all. A deploy usually needs both the platform domain and a custom one.
+    test("accepts a comma-separated list of production origins", () => {
+        const origins = buildCorsOrigins(
+            "https://ghostly.vercel.app, https://ghostly.dev",
+            "production"
+        );
+
+        expect(origins).toEqual(["https://ghostly.vercel.app", "https://ghostly.dev"]);
+    });
+
+    test("ignores blank entries and stray whitespace", () => {
+        const origins = buildCorsOrigins("https://ghostly.dev, ,  ", "production");
+
+        expect(origins).toEqual(["https://ghostly.dev"]);
+    });
+
+    test("still admits no localhost origin in production", () => {
+        const origins = buildCorsOrigins(
+            "https://ghostly.vercel.app,https://ghostly.dev",
+            "production"
+        );
+
+        expect(origins.some((o) => o.includes("localhost"))).toBe(false);
+    });
+
+    test("keeps every configured origin alongside the dev defaults outside production", () => {
+        const origins = buildCorsOrigins("https://preview.vercel.app", "development");
+
+        expect(origins).toContain("https://preview.vercel.app");
+        expect(origins).toContain("http://localhost:5173");
+    });
+});

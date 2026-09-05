@@ -16,9 +16,20 @@ const LOCAL_DEV_ORIGINS = [
     "http://127.0.0.1:5173"
 ];
 
+/**
+ * `clientUrl` may be a single origin or a comma-separated list. The split
+ * deployment usually needs at least two -- the platform domain the SPA is
+ * served from and whatever custom domain points at it -- and a mismatch here
+ * does not degrade gracefully: the socket handshake is simply refused.
+ */
 export function buildCorsOrigins(clientUrl: string, nodeEnv: string): string[] {
+    const configured = clientUrl
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+
     const origins =
-        nodeEnv === "production" ? [clientUrl] : [clientUrl, ...LOCAL_DEV_ORIGINS];
+        nodeEnv === "production" ? configured : [...configured, ...LOCAL_DEV_ORIGINS];
 
     return origins.filter((origin, i, arr) => arr.indexOf(origin) === i);
 }

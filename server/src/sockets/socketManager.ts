@@ -47,9 +47,27 @@ export function initializeSocketIO(httpServer: HttpServer) {
     io.use(socketAuth);
 
     io.on("connection", (socket) => {
-        // debug, not info: this fires on every connection and the VM has
-        // limited IOPS to spend on log writes.
+        // debug, not info: this fires on every connection and log writes are
+        // not free on a small instance.
         logger.debug(`Socket connected: ${socket.id}`);
+
+        // Per-socket event budgets. Costs no Redis and dies with the connection.
+        const limiter = new EventRateLimiter();
+
+        socket.use(([event], next) => {
+            if (limiter.allow(String(event))) return next();
+
+            if (limiter.violations > MAX_VIOLATIONS) {
+                logger.warn(`Disconnecting ${socket.id}: persistent rate-limit abuse`);
+                socket.disconnect(true);
+                return;
+            }
+
+            // Tell the client rather than dropping silently, so a legitimate
+            // client that is simply too eager can back off instead of guessing.
+            socket.emit("rate-limited", { event: String(event) });
+            next(new Error("rate_limited"));
+        });
 
         // Register Handlers
         matchSocketHandler(io, socket);
@@ -66,6 +84,7 @@ export function initializeSocketIO(httpServer: HttpServer) {
 
 import { redisClient } from "../config/redis";
 import { resolveClientKey } from "./clientKey";
+import { EventRateLimiter, MAX_VIOLATIONS } from "./eventRateLimit";
 
 // Per identity, not per proxy. resolveClientKey prefers the verified session and
 // falls back to the real client IP taken from X-Forwarded-For at the same hop

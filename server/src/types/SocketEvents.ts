@@ -7,6 +7,8 @@ export interface ServerToClientEvents {
     "queue-error": (message: string) => void;
     "queue-waiting": () => void;
     "queue-cooldown": (data: { remaining: number }) => void;
+    /** Emitted when an event exceeded its per-socket budget. */
+    "rate-limited": (data: { event: string }) => void;
     "matched": (data: { roomId: string; partnerNickname: string; partnerBio: string }) => void;
 
     // Chat
