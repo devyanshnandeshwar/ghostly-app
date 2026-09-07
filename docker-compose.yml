@@ -1,73 +1,31 @@
+# Local development dependencies only.
+#
+# There is no application service here any more. The API runs on Render and the
+# SPA on Vercel; locally you run them directly (`bun run dev` in each), so this
+# file exists purely to provide the two datastores.
+#
+# Ports are published to the host on purpose -- unlike the old all-in-Docker
+# setup, the server process runs outside Docker and has to reach them.
 services:
-
   mongo:
     image: mongo:7
     container_name: ghostly-mongo
     restart: unless-stopped
+    # WiredTiger sizes its cache against HOST ram inside a container and would
+    # otherwise claim a substantial share of the machine to serve two small
+    # collections.
     command: ["--wiredTigerCacheSizeGB", "0.25"]
+    ports:
+      - "27017:27017"
     volumes:
       - mongo_data:/data/db
-    networks:
-      - ghostly-net
 
   redis:
     image: redis:7-alpine
     container_name: ghostly-redis
     restart: unless-stopped
-    expose:
-      - "6379"
-    networks:
-      - ghostly-net
-
-
-  ai-model:
-    build:
-      context: .
-      dockerfile: ai-model/Dockerfile
-    container_name: ghostly-ai
-    restart: unless-stopped
-    expose:
-      - "8000"
-    networks:
-      - ghostly-net
-
-  server:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    container_name: ghostly-server
-    restart: unless-stopped
-    env_file:
-      - .env.production
-    expose:
-      - "5000"
-    depends_on:
-      - mongo
-      - ai-model
-      - redis
-    networks:
-      - ghostly-net
-
-  client:
-    build:
-      context: .
-      dockerfile: client/Dockerfile
-      args:
-        VITE_API_URL: /api
-        VITE_SOCKET_URL: ""
-        VITE_BASE_PATH: /
-    container_name: ghostly-client
-    restart: unless-stopped
     ports:
-      - "3000:8080"
-    depends_on:
-      - server
-    networks:
-      - ghostly-net
+      - "6379:6379"
 
 volumes:
   mongo_data:
-
-networks:
-  ghostly-net:
-    driver: bridge
