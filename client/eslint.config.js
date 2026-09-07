@@ -20,4 +20,18 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // react-refresh/only-export-components is a hot-reload ergonomics rule: a
+    // non-component export downgrades a fast refresh to a full page reload. Two
+    // places here export non-components by established convention, and splitting
+    // them would mean fighting the convention for a dev-only nicety:
+    //   - components/ui/*  shadcn ships each primitive with its CVA variants
+    //     (buttonVariants, badgeVariants) in the same file.
+    //   - context/*        the provider and its useX consumer hook belong
+    //     together; separating them is how you get import cycles.
+    files: ['src/components/ui/**/*.{ts,tsx}', 'src/context/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

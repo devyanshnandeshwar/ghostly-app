@@ -13,9 +13,10 @@ Ghosty follows a microservices-inspired architecture derived by local services, 
   - **Socket.IO**: Real-time signaling for chat and matchmaking.
   - **Matchmaking Engine**: In-memory queuing system.
   - **Session Management**: Device fingerprinting and persistence via MongoDB.
-- **AI Service (`/ai-model`)**: A FastAPI Python service running a Caffe Deep Learning model (OpenCV DNN) for:
-  - Face Detection (SSD Framework)
-  - Gender Classification
+- **On-device ML (in `/client`)**: There is no ML service. Both models run in the user's browser:
+  - **Face detection**: MediaPipe Tasks Vision (BlazeFace, WASM), used to gate the capture button until the user is well framed.
+  - **Gender classification**: `@vladmandic/face-api`'s age/gender net, run on the cropped face.
+  - Both are served from this origin out of `client/public/`, so no third party is contacted during verification.
 - **Shared (`/shared`)**: Contains TypeScript interfaces and contract types shared between the Client and Server to ensure type safety across the network boundary.
 
 ---
@@ -24,21 +25,35 @@ Ghosty follows a microservices-inspired architecture derived by local services, 
 
 We prioritized user privacy and anonymity in the architectural design.
 
-### Delete-After-Verify Logic
+### The image never leaves the device
 
-One of the critical promises of Ghosty is that **no user images are stored**. This is enforced architecturaly, not just by policy.
+Ghostly's promise is that **no user images are stored**. That is now true by construction rather than by discipline: the image is never transmitted at all.
 
 **How it works:**
 
-1.  **Capture**: User takes a snapshot in the browser.
-2.  **Transmission**: The image blob is sent to the Node.js backend.
-3.  **Forwarding**: The backend immediately streams this blob to the AI Service (Python).
-4.  **Processing**:
-    - The AI Service reads the request stream directly into a memory buffer (`bytes`).
-    - Using `numpy` and `cv2.imdecode`, the raw bytes are converted to an image array in RAM.
-    - The Neural Network processes this array to detect faces and classify gender.
-5.  **Destruction**: Once the prediction JSON response is returned, the memory scope in the Python function ends. The Python Garbage Collector automatically frees the RAM blocks containing the image data.
-6.  **Zero-Disk Policy**: At no point in this chain is `cv2.imwrite()` or `file.save()` called. The image never touches the hard drive.
+1.  **Capture**: The user takes a snapshot in the browser. MediaPipe has already located the face, so the frame is cropped to it.
+2.  **Classification**: `face-api`'s age/gender net runs on that crop, in the browser, on the user's own CPU.
+3.  **Destruction**: The canvas holding the frame is zeroed immediately after the single call that reads it (`client/src/components/Verify.tsx`).
+4.  **Transmission**: Only `{ gender, confidence }` is POSTed to `/api/verify/gender`. No image bytes cross the network.
+5.  **Zero-Disk Policy**: There is no upload endpoint, no multipart parser and no image buffer on the server. `multer` was removed along with the AI service.
+
+Verify this yourself: open the Network tab during capture and confirm the request body is JSON.
+
+### Trust model: verification is a claim, not a proof
+
+This is the trade-off that pays for the above, and it is deliberate.
+
+Because classification happens on the client, **the server records what it is told**. A modified client can send any allowed value:
+
+```
+POST /api/verify/gender  {"gender": "female", "confidence": 0.99}   -> 200 OK
+```
+
+`server/src/services/verify.service.ts` validates the *shape* of that claim — an allowlist of `male` / `female`, and a confidence within `[0, 1]` — because it is untrusted input on its way into `session.gender`, which the matchmaking socket reads. It cannot validate the *truth* of it.
+
+`MIN_VERIFY_CONFIDENCE` still applies, but it is advisory: it stops an honest client's genuinely uncertain prediction from granting verified status, and stops nothing else.
+
+**What this buys and what it does not.** It keeps honest users out of the wrong queue and removes an entire service, a language and an image-upload path from the attack surface. It is not a defence against a determined user, and there is no liveness check. If verification ever needs to resist attackers rather than deter casual misuse, classification has to move back behind the server — and the server would need its own face detector, because the gender net returns a confident answer for any input at all (measured on the previous model: random noise classified as female at 0.9985).
 
 ### Device ID & Anonymous Sessions
 
@@ -144,24 +159,26 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
+    participant C as Client (browser)
     participant S as Server
-    participant AI as AI Model
 
-    C->>C: Capture Webcam Frame
-    C->>S: POST /api/verify (FormData)
-    S->>AI: POST /verify-gender
+    Note over C: MediaPipe gates capture<br/>until a face is well framed
+    C->>C: Capture frame, crop to face
+    C->>C: face-api classifies the crop
+    C->>C: Zero the canvas
 
-    Note over AI: Load into Memory -> Detect Face -> Classify
+    C->>S: POST /api/verify/gender<br/>{ gender, confidence } - JSON only
 
-    AI-->>S: { gender: "male", confidence: 0.98 }
-
-    alt Confidence > Threshold
+    alt Shape valid and confidence >= threshold
         S->>S: Update Session (isVerified=true)
         S-->>C: 200 OK (Verified)
-    else Low Confidence / No Face
+    else Gender not in allowlist
+        S-->>C: 400 Bad Request
+    else Confidence below threshold
         S-->>C: 422 Unprocessable Entity
     end
+
+    Note over C,S: The image never crosses this boundary.<br/>The server records the claim; it cannot verify it.
 ```
 
 ## 4. Additional Features
@@ -195,31 +212,30 @@ While the system enforces privacy and verification, there are known limitations 
 
 - **Device ID Spoofing**: The system relies on a client-generated Device ID stored in `localStorage` for session persistence. Since this ID is not signed or encrypted by the server, it is possible for malicious users to manually modify their local storage to assume the identity of another user if they can obtain that user's UUID. A more secure approach using server-only Signed Cookies is planned for future releases.
 
-### Full System Communication (Client - Server - AI)
+### Full System Communication (Client - Server)
 
-The following diagram illustrates the complete interaction loop between the Client, the Node.js Server, and the Python AI Model during the verification phase.
+Where the work happens during verification. Both models are downloaded once from
+this origin and run entirely on the user's machine.
 
 ```mermaid
 sequenceDiagram
+    participant Assets as Static assets (Caddy)
     participant Client
-    participant Server as Node.js Server
-    participant AI as AI Model (Python/FastAPI)
+    participant Server as Bun Server
 
-    Note over Client: User takes photo
-    Client->>Server: POST /api/verify (FormData: Image)
+    Note over Client: Preloaded when the user<br/>leaves the landing page
+    Client->>Assets: GET /mediapipe/1.0.1/* (WASM + BlazeFace)
+    Client->>Assets: GET /face-api/1.7.15/* (age/gender weights)
 
-    Note over Server: Stream Handling
-    Server->>AI: POST /verify-gender (Stream)
+    Note over Client: 1. Detect face at ~10fps<br/>2. Gate capture until well framed<br/>3. Crop to face + padding<br/>4. Classify crop<br/>5. Zero the canvas
 
-    Note over AI: 1. Receive Stream<br/>2. Bytes to Memory Array<br/>3. Face Detection (SSD)<br/>4. Gender Class. (Caffe)
+    Client->>Server: POST /api/verify/gender { gender, confidence }
 
-    alt Face Detected
-        AI-->>Server: JSON { gender: "female", confidence: 0.99 }
-        Server->>Server: Update Session (Verified=True)
-        Server-->>Client: 200 OK { success: true }
-    else No Face / Error
-        AI-->>Server: JSON { error: "No face detected" }
-        Server-->>Client: 422 Unprocessable Entity
+    alt Claim well-formed and confident
+        Server->>Server: Validate allowlist, update session
+        Server-->>Client: 200 OK { verified: true, gender, userHash }
+    else Malformed claim
+        Server-->>Client: 400 / 422 with a readable reason
     end
 ```
 
@@ -229,7 +245,8 @@ To further improve user experience and deployment speed, the architecture has be
 
 - **Frontend Code Splitting**: The React application uses `React.lazy()` and `Suspense` to lazily load heavyweight components (like the Chat screen and Video Verification interface). This significantly reduces the size of the initial JavaScript bundle, improving Time to Interactive (TTI).
 - **Nginx Response Compression**: The client side is served by Nginx, which is configured to use Gzip compression on static assets (`.js`, `.css`, `.html`). This minimizes bandwidth usage and speeds up load times globally.
-- **Optimized Docker Builds**: The `Dockerfile`s use multistage builds and efficient dependency installation commands (`bun install --frozen-lockfile`, `uv pip install`, and caching steps) to reduce final image bloat and accelerate CI/CD workflows.
+- **Optimized Docker Builds**: The `Dockerfile`s use multistage builds and efficient dependency installation commands (`bun install --frozen-lockfile` and caching steps) to reduce final image bloat and accelerate CI/CD workflows.
+- **One fewer service**: Verification used to run in a separate Python/OpenCV container (~598MB) that forced 4GB of swap on the deployment VM. Moving both models into the browser removed that container, its image, its CI build and the swap along with it.
 
 ### Horizontal Scaling (Future Proofing)
 
@@ -237,5 +254,5 @@ The code was designed with scaling in mind (originally using Redis Adapters). Wh
 
 ### Robust Error Handling
 
-- **Graceful Degraded State**: If the AI Verification service goes down, the rest of the application (Chat, "Unverified" matchmaking) continues to function.
+- **Graceful Degraded State**: If either on-device model fails to load, the capture button stays enabled and the user can still attempt verification -- the framing gate fails open rather than locking anyone out. Note that verification itself is not optional: `match.socket.ts` refuses to queue a session without `isVerified` and a gender.
 - **Reconnection Logic**: The frontend handles network dips automatically, re-establishing socket connections without losing the session state.

@@ -134,36 +134,43 @@ Real options:
 
 Effort: ~1 day once the approach is chosen.
 
-### Item 14 — No liveness check on verification
+### Item 14 — Verification is a claim, not a proof — DECIDED
 
-Any photo passes; it need not be of the account holder. The confidence floor stops
-low-quality guesses, not deliberate impersonation.
+The question this item used to pose ("deter casual misuse, or resist determined
+attackers?") has been answered: **deter casual misuse.**
 
-A real fix is a challenge–response flow (blink, turn your head), which needs
-multi-frame capture and face landmarks the current Caffe model does not provide.
-Best done **with** item 22, since MediaPipe supplies exactly those landmarks.
+Classification moved into the browser along with detection, so the server now
+records what the client tells it. `POST /api/verify/gender {"gender":"female"}`
+succeeds for anyone who opens devtools. The allowlist in `verify.service.ts`
+keeps the database well-formed; it does not make the claim true, and
+`MIN_VERIFY_CONFIDENCE` is advisory. Documented in DOCUMENTATION.md §2.
 
-Decide first: is verification meant to deter casual misuse, or resist determined
-attackers? The two answers imply very different budgets.
+Liveness is therefore moot at the current budget — a challenge–response flow
+would only harden a check that is bypassed one layer below it.
 
-Effort: ~2 days.
+**Reopen this only if the trust requirement changes.** Doing so means moving
+classification back behind the server, and the server would then also need its
+own face detector: the gender net has no "not a face" class and answers
+confidently for any input (measured on the old model: random noise classified as
+female at 0.9985, flat grey at 0.9991, both far above the 0.85 threshold). That
+detector was the actual control, not preprocessing.
 
-### Item 22 — Move face detection to the browser
+### Item 22 — Move verification to the browser — DONE
 
-`ai-model/app/services/detection.py:58` runs two DNN passes server-side. The
-detection half belongs in the browser: a live bounding box instead of blind
-capture, frames with no face never leaving the device, a small crop uploaded
-instead of a full frame, and one fewer DNN pass on the server.
+Both DNN passes now run client-side and `ai-model/` is deleted.
 
-Item 27 already downscales uploads to a 640px edge, so part of the bandwidth win
-is banked.
+- **Detection**: MediaPipe BlazeFace in `client/src/hooks/useFaceFraming.ts`,
+  gating the capture button with live framing feedback and failing open three
+  ways so a model failure never locks anyone out.
+- **Classification**: `@vladmandic/face-api` in `client/src/lib/genderClassifier.ts`.
+- The frame is never uploaded — only `{ gender, confidence }`.
 
-**Classification must stay server-side** — if the client asserts its own gender,
-verification means nothing. Open question: does the server still re-run detection
-as defence in depth? That costs most of the CPU saving but stops a cropped-image
-attack from being trivial.
+Removed with it: a container, a language, a 598MB image, a CI matrix entry, the
+4GB swap (see 4.4), and `axios`/`form-data`/`multer` from the server.
 
-Effort: 1–2 days. Clearest payoff of the four.
+This item originally said "Classification must stay server-side — if the client
+asserts its own gender, verification means nothing." That constraint was
+knowingly traded away; see item 14 for the decision and its consequences.
 
 ### Item 23 — Move sessions to Redis, drop MongoDB
 
@@ -187,7 +194,7 @@ Effort: 2–3 days.
 
 ### 4.1 Enable the CI workflow
 
-`.github/workflows/build-and-push.yml` builds all three production images and
+`.github/workflows/build-and-push.yml` builds both production images and
 pushes them to Azure Container Registry, tagged with both `latest` and the commit
 SHA so a bad deploy can be rolled back rather than rebuilt.
 
@@ -201,8 +208,7 @@ It will not run until these repository secrets exist:
 
 Enable the admin user first: `az acr update --name <registry> --admin-enabled true`
 
-Once running, the VM never compiles anything and the 4 GB swap in
-`azure_deploy.sh` becomes unnecessary.
+Note the matrix is now **two** images (server, caddy) — ai-model is gone.
 
 ### 4.2 Local disk is at 98%
 
@@ -224,11 +230,12 @@ or domain to route.
 `client/Dockerfile` and `client/nginx.conf` are therefore still live and used —
 they are not dead code. Worth revisiting if the divergence causes confusion.
 
-### 4.4 Consider removing the 4 GB swap
+### 4.4 Remove the 4 GB swap — DONE
 
-`azure_deploy.sh:13–24` provisions it to survive building opencv/numpy on two
-burstable vCPUs. Once 4.1 is done nothing is built on the VM and the swap is
-mostly pointless.
+It existed to survive building opencv/numpy on two burstable vCPUs. That service
+is gone, so the block was removed from `azure_deploy.sh`. Existing VMs keep their
+`/swapfile` and the `/etc/fstab` entry; remove those by hand if you want the disk
+back — the script no longer creates them.
 
 ---
 
