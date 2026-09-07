@@ -1,5 +1,7 @@
 import { Report, ReportReason } from "../models/Report";
 import { logger } from "../utils/logger";
+import { updateSession } from "./session.service";
+import { statusForReportCount } from "./moderation.policy";
 
 const REPORT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_REPORTS_PER_WINDOW = 3;
@@ -40,15 +42,47 @@ export const createReport = async (
         }
     }
 
-    const report = await Report.create({
-        reporterId,
+    let report;
+    try {
+        report = await Report.create({
+            reporterId,
+            reportedId,
+            reason,
+            roomId,
+            description,
+            resolved: false
+        });
+    } catch (error: any) {
+        // The unique index is the real duplicate guard; the read above races.
+        if (error?.code === 11000) {
+            throw new Error("You have already reported this user in this session.");
+        }
+        throw error;
+    }
+
+    // These counters are declared on the schema and read by the client, and
+    // were previously written by nothing at all -- the report badge was
+    // permanently zero and a report had no consequence of any kind.
+    await Promise.all([
+        updateSession(reporterId, { $inc: { totalReports: 1 } }),
+        updateSession(reportedId, { $inc: { reportsAgainst: 1 } })
+    ]);
+
+    // Distinct reporters, not raw count: one person filing repeatedly must not
+    // be able to limit someone on their own.
+    const distinctReporters = await Report.distinct("reporterId", {
         reportedId,
-        reason,
-        roomId,
-        description,
-        resolved: false
+        timestamp: { $gte: new Date(Date.now() - REPORT_WINDOW_MS) }
     });
 
-    logger.info(`[Report] User ${reporterId} reported ${reportedId}. Reason: ${reason}`);
+    const status = statusForReportCount(distinctReporters.length);
+    if (status !== "active") {
+        await updateSession(reportedId, { status });
+        logger.warn(
+            `[Moderation] ${reportedId} auto-${status} after ${distinctReporters.length} distinct reporters`
+        );
+    }
+
+    logger.info(`[Report] filed against ${reportedId}, reason: ${reason}`);
     return report;
 };

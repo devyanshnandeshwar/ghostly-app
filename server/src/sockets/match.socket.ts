@@ -3,6 +3,7 @@ import { addToQueue, removeFromQueue, setCooldown, SKIP_COOLDOWN_SECONDS } from 
 import { setActiveMatch, getActiveMatch, clearActiveMatch } from "../services/presence.service";
 import { getQueueSessionView, updateSession } from "../services/session.service";
 import { hasFilterQuota, consumeFilter } from "../services/quota.service";
+import { canEnterQueue } from "../services/moderation.policy";
 import { logger } from "../utils/logger";
 import type { SessionSocket } from "./socketManager";
 
@@ -20,6 +21,14 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
 
             if (!currentSession.isVerified || !currentSession.gender) {
                 socket.emit("queue-error", "Verification required");
+                return;
+            }
+
+            // Moderation actually bites here. Without this a reported or banned
+            // account was matched with someone new by its very next join-queue.
+            const admission = canEnterQueue(currentSession.status as any);
+            if (!admission.allowed) {
+                socket.emit("queue-error", admission.reason!);
                 return;
             }
 

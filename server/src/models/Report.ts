@@ -67,4 +67,20 @@ if (config.REPORT_RETENTION_DAYS > 0) {
 // Unresolved reports are read newest-first on every admin page load.
 ReportSchema.index({ resolved: 1, timestamp: -1 });
 
+// createReport counts a reporter's recent reports on every submission. Without
+// this the abuse limit is a collection scan, which grows with retention and
+// makes report flooding an efficient way to burn server CPU.
+ReportSchema.index({ reporterId: 1, timestamp: -1 });
+
+// The auto-limit decision counts distinct reporters of one account.
+ReportSchema.index({ reportedId: 1, timestamp: -1 });
+
+// One report per reporter, per target, per room -- as a constraint rather than
+// a read-then-write, which races. Partial because roomId is optional: without
+// the filter every report lacking one would collide with every other.
+ReportSchema.index(
+    { reporterId: 1, reportedId: 1, roomId: 1 },
+    { unique: true, partialFilterExpression: { roomId: { $exists: true } } }
+);
+
 export const Report = mongoose.model("Report", ReportSchema);

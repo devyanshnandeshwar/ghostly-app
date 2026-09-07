@@ -76,6 +76,15 @@ const UserSessionSchema = new mongoose.Schema(
             default: null
         },
 
+        // Enforced in the matchmaking gate. "limited" is applied automatically
+        // when enough distinct people report an account; "banned" is only ever
+        // set by a human.
+        status: {
+            type: String,
+            enum: ["active", "limited", "banned"],
+            default: "active"
+        },
+
         totalReports: {
             type: Number,
             default: 0

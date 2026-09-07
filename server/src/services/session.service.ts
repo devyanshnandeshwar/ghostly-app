@@ -38,6 +38,8 @@ export const getSessionByDeviceId = async (deviceId: string) => {
 export interface QueueSessionView {
     _id: string;
     isVerified: boolean;
+    /** Gates matchmaking. Must be cached, or a ban lags by a full cache TTL. */
+    status: string;
     gender: string | null;
     preference: string;
     nickname: string | null;
@@ -62,6 +64,7 @@ export async function getQueueSessionView(sessionId: string): Promise<QueueSessi
     const view: QueueSessionView = {
         _id: session._id.toString(),
         isVerified: session.isVerified ?? false,
+        status: (session as any).status ?? "active",
         gender: session.gender ?? null,
         preference: session.preference ?? "any",
         nickname: session.nickname ?? null,
@@ -83,6 +86,7 @@ export async function invalidateSessionCache(sessionId: string) {
 // a field cached but missing here would go stale, silently.
 const CACHED_FIELDS = new Set<keyof QueueSessionView | string>([
     "isVerified",
+    "status",
     "gender",
     "preference",
     "nickname",

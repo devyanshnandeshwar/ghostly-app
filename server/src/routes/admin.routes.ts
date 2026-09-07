@@ -1,14 +1,19 @@
 import { Router } from "express";
-import { getReports } from "../controllers/admin.controller";
+import {
+    getReports,
+    resolveReport,
+    setSessionStatus,
+    getAuditLog
+} from "../controllers/admin.controller";
 import { requireAdmin } from "../middlewares/admin.middleware";
 
 const router = Router();
 
 router.use(requireAdmin);
 
-// GET /api/admin/reports
 router.get("/reports", getReports);
+router.post("/reports/:id/resolve", resolveReport);
+router.post("/sessions/:id/status", setSessionStatus);
+router.get("/audit", getAuditLog);
 
 export default router;
-
-
