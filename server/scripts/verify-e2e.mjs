@@ -10,7 +10,11 @@ import { execSync } from "child_process";
 
 const BASE = process.env.VERIFY_BASE || "http://localhost:3000";
 const HOST = process.env.VERIFY_HOST || "localhost";
-const MONGO_DB = process.env.VERIFY_MONGO_DB || "kylmo";
+// Must match the database in the server's MONGO_URI. A mismatch is silent and
+// baffling: the fixtures write to one database, the server reads another, and
+// every match attempt fails a gate the fixture thought it had satisfied.
+// Defaults to the name in server/.env.example rather than the old prod name.
+const MONGO_DB = process.env.VERIFY_MONGO_DB || "ghostly";
 
 let passed = 0;
 let failed = 0;
@@ -54,25 +58,32 @@ const connect = (token) =>
 const redis = (cmd) =>
     execSync(`docker exec ghostly-redis redis-cli ${cmd}`).toString().trim();
 
-const queueState = () => {
-    let entries = 0, index = 0;
-    for (const key of redis("--scan --pattern 'ghosty:queue:*'").split("\n").filter(Boolean)) {
-        if (key.includes(":index:")) index++;
-        else entries += parseInt(redis(`llen ${key}`)) || 0;
-    }
-    return { entries, index };
-};
+// The queue and presence moved into the server process, so Redis can no longer
+// observe them and these helpers now assert the opposite of what they used to:
+// that NOTHING queue-shaped is left in Redis. Behaviour that used to be checked
+// by reading Redis directly -- an entry appearing on join, disappearing on
+// disconnect -- is now covered by unit tests against the store itself
+// (queue.store.test.ts), which can assert it far more precisely than a scan.
+const strayQueueKeys = () =>
+    redis("--scan --pattern 'ghosty:queue:*'").split("\n").filter(Boolean).length;
 
-const activeMatchKeys = () =>
+const strayPresenceKeys = () =>
     redis("--scan --pattern 'ghosty:activematch:*'").split("\n").filter(Boolean).length;
 
-/** Creates a session and marks it verified, which join-queue requires. */
+/**
+ * Creates a session ready to enter the queue.
+ *
+ * join-queue gates on three things now: a confirmed age, verification, and an
+ * account status of "active". Setting only isVerified leaves the age gate
+ * closed and every match attempt fails with "Please confirm your age".
+ */
 async function makeVerifiedSession(gender, nickname) {
-    const session = await api("/api/session/init");
+    const session = await api("/api/v1/session/init");
     execSync(
         `docker exec ghostly-mongo mongosh ${MONGO_DB} --quiet --eval ` +
         `'db.usersessions.updateOne({_id:ObjectId("${session._id}")},` +
-        `{$set:{isVerified:true,gender:"${gender}",preference:"any",nickname:"${nickname}"}});'`
+        `{$set:{isVerified:true,gender:"${gender}",preference:"any",nickname:"${nickname}",` +
+        `status:"active",ageConfirmedAt:new Date(),birthDate:new Date("1990-01-01")}});'`
     );
     return session;
 }
@@ -98,21 +109,31 @@ async function makeVerifiedSession(gender, nickname) {
 
     const matchedA = waitFor(sa, "matched");
     const matchedB = waitFor(sb, "matched");
+
+    const waitingA = { settled: false };
+    sa.once("queue-waiting", () => { waitingA.settled = true; });
+
     sa.emit("join-queue");
     await new Promise((r) => setTimeout(r, 600));
 
-    const queued = queueState();
-    check("queue entry + reverse index written", queued.entries === 1 && queued.index === 1,
-        JSON.stringify(queued));
+    // Observable rather than inspected: the queue is in-process now, so the
+    // proof that someone is waiting is that the server said so.
+    check("first joiner is told they are waiting", waitingA.settled === true,
+        waitingA.settled ? "" : "no queue-waiting received");
 
     sb.emit("join-queue");
     const [ma, mb] = await Promise.all([matchedA, matchedB]);
     check("both users matched into the same room", ma.roomId === mb.roomId);
     check("partner nicknames delivered", ma.partnerNickname === "Bo" && mb.partnerNickname === "Ava",
         `${ma.partnerNickname} / ${mb.partnerNickname}`);
-    check("queue drained on match", queueState().entries === 0);
-    check("match state stored in Redis, not process memory", activeMatchKeys() === 2,
-        `${activeMatchKeys()} keys`);
+    // Inverted deliberately. This used to assert presence WAS in Redis so a
+    // second instance could read it; the deployment runs one instance and a
+    // spin-down destroys every socket, so a Redis row describing a socket
+    // outlives the socket. Now the assertion is that nothing leaked there.
+    check("no presence state left in Redis", strayPresenceKeys() === 0,
+        `${strayPresenceKeys()} keys`);
+    check("no queue state left in Redis", strayQueueKeys() === 0,
+        `${strayQueueKeys()} keys`);
 
     // --- E2EE ---
     sa.emit("join-room", ma.roomId);
@@ -153,44 +174,39 @@ async function makeVerifiedSession(gender, nickname) {
     sa.disconnect();
     await partnerLeft;
     await new Promise((r) => setTimeout(r, 1200));
-    check("match state cleared on disconnect", activeMatchKeys() === 0,
-        `${activeMatchKeys()} keys`);
+    // The partner-left event above is the real proof the match was torn down;
+    // this only confirms nothing was written to Redis on the way.
+    check("disconnect leaves no presence state in Redis", strayPresenceKeys() === 0,
+        `${strayPresenceKeys()} keys`);
 
     // --- queue cleanup ---
+    // Behavioural: if a disconnected user were left in the queue, the next
+    // joiner would be matched with a socket that no longer exists and would sit
+    // in a chat whose partner never speaks. So the check is that the next
+    // joiner waits rather than matches.
     const dee = await makeVerifiedSession("male", "Dee");
     const sd = await connect(dee.token);
+    const deeWaiting = waitFor(sd, "queue-waiting");
     sd.emit("join-queue");
-    await new Promise((r) => setTimeout(r, 700));
-    check("queued user present before disconnect", queueState().entries === 1);
+    await deeWaiting;
     sd.disconnect();
-    await new Promise((r) => setTimeout(r, 1300));
-    const after = queueState();
-    check("no orphaned queue entry after disconnect",
-        after.entries === 0 && after.index === 0, JSON.stringify(after));
+    await new Promise((r) => setTimeout(r, 800));
 
-    // --- queue removal without the reverse index ---
-    // The index has a 1h TTL, so the scan fallback would otherwise never run in
-    // testing. Deleting the key simulates an expiry or a memory eviction.
-    const faller = await makeVerifiedSession("male", "Faller");
-    const sf = await connect(faller.token);
-    sf.emit("join-queue");
-    await new Promise((r) => setTimeout(r, 900));
-    const beforeFallback = queueState();
+    const eve = await makeVerifiedSession("female", "Eve");
+    const se = await connect(eve.token);
+    let eveMatched = false;
+    se.on("matched", () => { eveMatched = true; });
+    const eveWaiting = waitFor(se, "queue-waiting");
+    se.emit("join-queue");
+    await eveWaiting;
+    check("a disconnected user is not offered as a match", eveMatched === false);
+    check("nothing queue-shaped left in Redis", strayQueueKeys() === 0,
+        `${strayQueueKeys()} keys`);
 
-    for (const key of redis("--scan --pattern 'ghosty:queue:index:*'").split("\n").filter(Boolean)) {
-        redis(`del ${key}`);
-    }
-
-    sf.emit("leave-queue");
-    await new Promise((r) => setTimeout(r, 1400));
-    const afterFallback = queueState();
-    check("queue entry removed even with no reverse index",
-        beforeFallback.entries === 1 && afterFallback.entries === 0 && afterFallback.index === 0,
-        `${beforeFallback.entries} -> ${afterFallback.entries}`);
+    se.disconnect();
 
     sb.disconnect();
     sc.disconnect();
-    sf.disconnect();
 
     console.log(`\n  ${passed} passed, ${failed} failed\n`);
     process.exit(failed > 0 ? 1 : 0);

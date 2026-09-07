@@ -8,12 +8,18 @@ const BASE = process.env.VERIFY_BASE || "http://localhost:3000";
 const post = async (p) =>
     (await fetch(BASE + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
 
+// Must match the database in the server's MONGO_URI. A mismatch is silent:
+// fixtures write to one database and the server reads another.
+const MONGO_DB = process.env.VERIFY_MONGO_DB || "ghostly";
+
 const mongo = (js) =>
-    execSync(`docker exec ghostly-mongo mongosh kylmo --quiet --eval '${js}'`).toString().trim();
+    execSync(`docker exec ghostly-mongo mongosh ${MONGO_DB} --quiet --eval '${js}'`).toString().trim();
 
 async function verified(gender, nickname) {
-    const s = await post("/api/session/init");
-    mongo(`db.usersessions.updateOne({_id:ObjectId("${s._id}")},{$set:{isVerified:true,gender:"${gender}",preference:"any",nickname:"${nickname}"}});`);
+    const s = await post("/api/v1/session/init");
+    // join-queue gates on a confirmed age and an active status as well as
+    // verification; setting only isVerified leaves every match attempt refused.
+    mongo(`db.usersessions.updateOne({_id:ObjectId("${s._id}")},{$set:{isVerified:true,gender:"${gender}",preference:"any",nickname:"${nickname}",status:"active",ageConfirmedAt:new Date(),birthDate:new Date("1990-01-01")}});`);
     return s;
 }
 
@@ -51,10 +57,13 @@ sa.disconnect();
 sb.disconnect();
 await new Promise((r) => setTimeout(r, 1500));
 
-// Round 2, inside the 60s cache window. The cooldown is 30s, so wait past it
-// but stay well inside the cache TTL.
-console.log("  waiting 32s (past the 30s cooldown, inside the 60s cache TTL)...");
-await new Promise((r) => setTimeout(r, 32000));
+// Round 2, inside the 60s session-cache window. The skip cooldown is 5s, so
+// wait past it while staying comfortably inside the cache TTL -- the whole
+// point is to prove pastMatches is respected on a read that could still be
+// served from cache.
+const WAIT_MS = 12_000;
+console.log(`  waiting ${WAIT_MS / 1000}s (past the 5s cooldown, inside the 60s cache TTL)...`);
+await new Promise((r) => setTimeout(r, WAIT_MS));
 
 sa = await connect(a.token);
 sb = await connect(b.token);
