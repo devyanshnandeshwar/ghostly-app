@@ -1,6 +1,6 @@
 import { Socket } from "socket.io";
 import { UserSession } from "../models/UserSession";
-import { IUserSession } from "@shared/types/User";
+import { IUserSession } from "../types/User";
 import { verifySessionToken } from "../utils/token";
 import { touchLastActive } from "../services/session.service";
 
@@ -29,6 +29,12 @@ export async function socketAuth(
 
         if (!session) {
             return next(new Error("Invalid session"));
+        }
+
+        // Same revocation check as the HTTP path: a bumped tokenVersion must
+        // close the socket door too, or revocation only half works.
+        if (((session as any).tokenVersion ?? 0) !== payload.version) {
+            return next(new Error("Session expired"));
         }
 
         // Attach session to socket

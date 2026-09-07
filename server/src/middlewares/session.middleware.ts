@@ -33,6 +33,14 @@ export async function verifySession(
             });
         }
 
+        // A bumped tokenVersion revokes this session's outstanding credentials
+        // without touching anyone else's.
+        if ((session.tokenVersion ?? 0) !== payload.version) {
+            return res.status(401).json({
+                error: "Session expired"
+            });
+        }
+
         // Attach session to request
         (req as any).session = session;
 

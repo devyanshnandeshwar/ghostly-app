@@ -3,6 +3,7 @@ import { UpdateQuery } from "mongoose";
 import { UserSession } from "../models/UserSession";
 import { logger } from "../utils/logger";
 import { redisClient } from "../config/redis";
+import { UNVERIFIED_SESSION_TTL_SECONDS } from "../config/limits";
 import { TtlCache } from "./ttlCache";
 
 /**
@@ -15,7 +16,10 @@ export const createSession = async () => {
     const session = await UserSession.create({
         deviceId: crypto.randomUUID(),
         isVerified: false,
-        gender: null
+        gender: null,
+        // Junk sessions from an unauthenticated mint must age out in hours, not
+        // the thirty days a real one gets. Cleared on verification.
+        expiresAt: new Date(Date.now() + UNVERIFIED_SESSION_TTL_SECONDS * 1000)
     });
 
     logger.debug(`Created session ${session._id}`);
@@ -159,3 +163,14 @@ export async function touchLastActive(sessionId: string) {
 // The gender-filter allowance moved to quota.service.ts. It lives entirely in
 // Redis, so keeping it here forced every quota test to import the mongoose
 // model above and drag in the whole driver.
+
+/**
+ * Invalidates every outstanding token for one session.
+ *
+ * Bumping the version is what makes revocation possible at all: before this the
+ * only lever was rotating SESSION_SECRET, which signs out every user at once.
+ */
+export async function revokeSession(sessionId: string) {
+    await UserSession.findByIdAndUpdate(sessionId, { $inc: { tokenVersion: 1 } });
+    await invalidateSessionCache(sessionId);
+}
