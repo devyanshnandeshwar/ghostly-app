@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useSocket } from "./SocketContext";
 import { useSession } from "./SessionContext";
+import { useToast } from "@/lib/toast";
 
 interface MatchResult {
     roomId: string;
@@ -23,6 +24,7 @@ const MatchContext = createContext<MatchContextType | null>(null);
 
 export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { socket } = useSocket();
+    const { notify } = useToast();
     const { refreshSession } = useSession();
     const [status, setStatus] = useState<"idle" | "waiting" | "matched">("idle");
     const [roomId, setRoomId] = useState<string | null>(null);
@@ -30,7 +32,9 @@ export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const findMatch = () => {
         if (!socket || !socket.connected) {
-            console.error("[MatchContext] Socket not ready");
+            // Previously a bare return: the button did nothing, with no spinner,
+            // no message and no state change.
+            notify("Not connected yet. Check your connection and try again.", "warning");
             return;
         }
         socket.emit("join-queue");
@@ -90,33 +94,44 @@ export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         
 
         const onQueueError = (error: string) => {
-            console.error("[MatchContext] Queue Error:", error);
-            alert(`Matchmaking Error: ${error}`);
+            notify(error, "warning");
             setStatus("idle");
         };
 
         const onQueueCooldown = ({ remaining }: { remaining: number }) => {
-            console.warn("[MatchContext] Cooldown:", remaining);
-            // alert(`Please wait ${remaining} seconds before searching again.`);
-            // Instead of alert, maybe just log or toast? For now alert is fine as per Plan? 
-            // Actually let's just use status idle so user sees the home screen again?
-            // Or better: Re-emit join-queue after delay? 
-            // For now, let's keep it simple: Go back to idle and user clicks again
             setStatus("idle");
-            alert(`Cooldown: Please wait ${remaining}s.`);
+            notify(`Give it ${remaining}s before searching again.`);
         };
 
         const onPartnerLeft = () => {
-            alert("Partner left the chat.");
+            notify("Your partner left the chat.");
             resetMatch();
         };
 
         const onPartnerSkipped = () => {
-             alert("Partner skipped you.");
+             notify("Your partner moved on. Search again when you are ready.");
              resetMatch();
         };
 
+        // Emitted when an event exceeds its per-socket budget.
+        const onRateLimited = () => {
+            notify("You are going a bit fast. Give it a moment.", "warning");
+            setStatus("idle");
+        };
+
+        // socket.io stops retrying after reconnectionAttempts, and nothing used
+        // to observe that -- a user on a network blocking the transport saw an
+        // app that simply never did anything. Handled here as an event rather
+        // than derived in an effect body, so the state update sits in a
+        // callback where it belongs.
+        const onReconnectFailed = () => {
+            notify("Lost connection. Reload the page to reconnect.", "warning");
+            setStatus("idle");
+        };
+
         socket.on("queue-waiting", onQueueWaiting);
+        socket.on("rate-limited", onRateLimited);
+        socket.io.on("reconnect_failed", onReconnectFailed);
         socket.on("matched", onMatched);
         socket.on("queue-error", onQueueError);
         socket.on("queue-cooldown", onQueueCooldown);
@@ -125,13 +140,17 @@ export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         return () => {
             socket.off("queue-waiting", onQueueWaiting);
+            socket.off("rate-limited", onRateLimited);
+            socket.io.off("reconnect_failed", onReconnectFailed);
             socket.off("matched", onMatched);
             socket.off("queue-error", onQueueError);
             socket.off("queue-cooldown", onQueueCooldown);
             socket.off("partner-left", onPartnerLeft);
             socket.off("partner-skipped", onPartnerSkipped);
         };
-    }, [socket]);
+        // refreshSession is stable (useCallback in SessionContext), so listing it
+        // does not re-register these listeners on every render.
+    }, [socket, refreshSession, notify]);
 
     return (
         <MatchContext.Provider value={{ status, roomId, partner, findMatch, resetMatch, leaveMatch, nextMatch, cancelMatch }}>

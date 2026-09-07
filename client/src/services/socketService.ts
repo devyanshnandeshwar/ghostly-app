@@ -18,7 +18,11 @@ class SocketService {
 
         this.socket = io(url, {
             auth: { token },
-            transports: ["websocket"],
+            // Polling included deliberately. Forcing websocket-only meant users
+            // on corporate proxies, some mobile carriers and captive networks
+            // could not connect at all -- and saw nothing explaining why.
+            // Socket.IO opens on polling and upgrades where it can.
+            transports: ["websocket", "polling"],
             reconnectionAttempts: 5
         });
 

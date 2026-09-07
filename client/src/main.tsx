@@ -6,9 +6,14 @@ import { SessionProvider } from './context/SessionContext'
 import { SocketProvider } from './context/SocketContext'
 import { MatchProvider } from './context/MatchContext'
 import { ThemeProvider } from './components/theme-provider'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { ToastProvider } from './components/Toaster'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    {/* Outermost, so a failure in any provider below still renders something. */}
+    <ErrorBoundary>
+    <ToastProvider>
     <SessionProvider>
       <SocketProvider>
         <MatchProvider>
@@ -18,5 +23,7 @@ createRoot(document.getElementById('root')!).render(
         </MatchProvider>
       </SocketProvider>
     </SessionProvider>
+    </ToastProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )
