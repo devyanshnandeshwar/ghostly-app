@@ -31,13 +31,24 @@ export const useCountdown = (secondsRemaining: number | undefined) => {
         secondsRemaining ? formatRemaining(secondsRemaining * 1000) : ""
     );
 
+    // Re-prime when the server reports a new figure, via React's documented
+    // "adjusting state when a prop changes" pattern. The effect below cannot do
+    // it: a setState in an effect body paints once with the previous window's
+    // value first. Derived from the prop alone, so no clock read during render
+    // -- Date.now() is impure and belongs in the effect and its callback.
+    const [prevSeconds, setPrevSeconds] = useState(secondsRemaining);
+
+    if (secondsRemaining !== prevSeconds) {
+        setPrevSeconds(secondsRemaining);
+        setTimeLeft(secondsRemaining ? formatRemaining(secondsRemaining * 1000) : "");
+    }
+
     useEffect(() => {
         if (!secondsRemaining || secondsRemaining <= 0) return;
 
         // Anchored to a wall-clock deadline rather than decremented per tick, so
         // a backgrounded tab that misses intervals does not drift slow.
         const deadline = Date.now() + secondsRemaining * 1000;
-        setTimeLeft(formatRemaining(deadline - Date.now()));
 
         const interval = setInterval(() => {
             const next = formatRemaining(deadline - Date.now());

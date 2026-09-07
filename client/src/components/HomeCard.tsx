@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Ghost, SlidersHorizontal, X } from "lucide-react";
 
-import { FREE_FILTERS_PER_DAY } from "@shared/constants";
-
 import { Button } from "@/components/ui/button";
 import { useSession } from "../context/SessionContext";
 
@@ -26,8 +24,8 @@ export function HomeCard({ status, onFindMatch, onCancel, onEditProfile }: HomeC
   // Without this the card confidently states a filter the server is about to
   // refuse, and the user learns about it from an error alert instead.
   const filterSpent =
-    session?.filtersUsedToday !== undefined &&
-    session.filtersUsedToday >= FREE_FILTERS_PER_DAY &&
+    session?.filtersRemaining !== undefined &&
+    session.filtersRemaining === 0 &&
     session.preference !== "any";
 
   return (

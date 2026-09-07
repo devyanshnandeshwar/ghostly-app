@@ -34,11 +34,26 @@ app.use(cors({
 app.use(express.json());
 app.use(xssMiddleware);
 app.use(globalLimiter);
-app.use("/api/session", sessionRoutes);
-app.use("/api/verify", verifyRoutes);
-app.use("/api/profile", profileRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/reports", reportRoutes);
+// Versioned, because the client is a cached SPA that can lag a deploy by an
+// arbitrary amount. Without a version segment there is no way to run an old and
+// a new payload shape side by side during a rollout -- a breaking change simply
+// breaks every stale tab.
+//
+// The unversioned prefix stays mounted as an alias so already-cached clients
+// keep working. It is the compatibility surface, not the contract: new work
+// targets /api/v1.
+const routes = [
+    ["/session", sessionRoutes],
+    ["/verify", verifyRoutes],
+    ["/profile", profileRoutes],
+    ["/admin", adminRoutes],
+    ["/reports", reportRoutes]
+] as const;
+
+for (const [path, router] of routes) {
+    app.use(`/api/v1${path}`, router);
+    app.use(`/api${path}`, router);
+}
 
 app.get("/health", (_, res) => {
     res.json({ status: "OK" });

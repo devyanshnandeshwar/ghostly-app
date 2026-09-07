@@ -1,4 +1,4 @@
-import { FREE_FILTERS_PER_DAY, FILTER_WINDOW_SECONDS } from "@shared/constants";
+import { FREE_FILTERS_PER_DAY, FILTER_WINDOW_SECONDS } from "../config/limits";
 import { redisClient } from "../config/redis";
 import { logger } from "../utils/logger";
 
@@ -30,9 +30,15 @@ export function filtersRemaining(used: number): number {
  * What the client needs to render the allowance: how much is spent, and how
  * long until it comes back. resetInSeconds is 0 when no window is open.
  */
-export async function getFilterUsage(
-    sessionId: string
-): Promise<{ used: number; resetInSeconds: number }> {
+export interface FilterUsage {
+    used: number;
+    remaining: number;
+    /** Sent to the client so it never needs its own copy of the allowance. */
+    total: number;
+    resetInSeconds: number;
+}
+
+export async function getFilterUsage(sessionId: string): Promise<FilterUsage> {
     const key = usageKey(sessionId);
 
     try {
@@ -40,8 +46,12 @@ export async function getFilterUsage(
 
         const used = raw ? parseInt(raw, 10) : 0;
 
+        const safeUsed = Number.isFinite(used) ? used : 0;
+
         return {
-            used: Number.isFinite(used) ? used : 0,
+            used: safeUsed,
+            remaining: filtersRemaining(safeUsed),
+            total: FREE_FILTERS_PER_DAY,
             // ttl returns -2 for a missing key and -1 for one with no expiry.
             resetInSeconds: ttl > 0 ? ttl : 0
         };
@@ -49,7 +59,12 @@ export async function getFilterUsage(
         // Never block matchmaking on a quota read. Reporting zero use is the
         // generous failure, which is the right one for a free allowance.
         logger.warn(`Filter usage read failed: ${error.message}`);
-        return { used: 0, resetInSeconds: 0 };
+        return {
+            used: 0,
+            remaining: FREE_FILTERS_PER_DAY,
+            total: FREE_FILTERS_PER_DAY,
+            resetInSeconds: 0
+        };
     }
 }
 

@@ -28,17 +28,28 @@ function App() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
 
-  // Both verification models would otherwise download at the verification step
-  // itself -- the least forgiving moment in onboarding. The funnel is
-  // Landing -> ProfileSetup -> Verify, so starting here buys the whole profile
-  // step to warm them. Both are idempotent and swallow their own errors, so a
-  // failure of either still leaves the flow working.
+  // Warmed at the profile step rather than on leaving the landing page.
+  //
+  // The models are ~11.7MB. Preloading them for everyone who clicked "start"
+  // meant paying that for visitors who bounced before verification ever came
+  // up -- bandwidth that is metered on the free tier and comes out of the same
+  // monthly allowance that serves the app itself.
+  //
+  // The funnel is Landing -> AgeGate -> ProfileSetup -> Verify, so starting at
+  // the profile step still buys a whole step of warm-up while only paying for
+  // users who are actually heading there. Both are idempotent and swallow
+  // their own errors, so a failure of either leaves the flow working.
+  // Derived here rather than from needsProfile, which is computed below the
+  // early returns and so is not available to a hook.
+  const headingToVerification =
+    (ageConfirmed || Boolean(session?.ageConfirmed)) && !session?.isVerified;
+
   useEffect(() => {
-    if (!showLanding) {
+    if (headingToVerification) {
       void preloadFaceFraming();
       void loadGenderClassifier().catch(() => {});
     }
-  }, [showLanding]);
+  }, [headingToVerification]);
 
   const handleVerified = async () => {
     await refreshSession();

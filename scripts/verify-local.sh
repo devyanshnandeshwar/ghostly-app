@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# Rebuilds the local stack and verifies it end to end.
+# Verifies the API end to end against a locally running server.
 #
-#   ./scripts/verify-local.sh            rebuild, start, then run all checks
-#   ./scripts/verify-local.sh --no-build use the running stack as-is
+#   ./scripts/verify-local.sh             start deps, start the server, check
+#   ./scripts/verify-local.sh --no-build  use an already-running server
+#
+# The app no longer runs in Docker: it deploys to Render (API) and Vercel
+# (SPA), so compose provides only MongoDB and Redis and the server runs on the
+# host. Checks therefore target the server's own port, not a proxy.
 #
 # Covers everything that can be checked without a browser. The webcam
 # verification path and the visual UI still need a human; the checklist at the
@@ -11,7 +15,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-BASE="${VERIFY_BASE:-http://localhost:3000}"
+BASE="${VERIFY_BASE:-http://localhost:5000}"
 COMPOSE="docker compose -f docker-compose.yml"
 PASS=0
 FAIL=0
@@ -27,112 +31,113 @@ expect_code() { # label, expected, actual
 code() { curl -s -o /dev/null -w "%{code_http:-%{http_code}}" -m 15 "$@" 2>/dev/null || echo "000"; }
 status() { curl -s -o /dev/null -w "%{http_code}" -m 15 "$@" 2>/dev/null || echo "000"; }
 
-# ---------------------------------------------------------------- build/start
+# ------------------------------------------------------------- deps + server
+
+SERVER_PID=""
+cleanup() {
+    if [ -n "$SERVER_PID" ]; then
+        kill "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
 
 if [ "${1:-}" != "--no-build" ]; then
-    head2 "Rebuilding images"
-    $COMPOSE build || { echo "build failed"; exit 1; }
+    head2 "Starting MongoDB and Redis"
+    $COMPOSE up -d || { echo "failed to start dependencies"; exit 1; }
+
+    head2 "Starting the API"
+    (cd server && bun src/server.ts) &
+    SERVER_PID=$!
 fi
 
-head2 "Starting stack"
-$COMPOSE up -d || { echo "startup failed"; exit 1; }
-
 printf "  waiting for services"
-for _ in $(seq 1 30); do
-    if [ "$(status "$BASE/api/reports/count")" != "000" ]; then break; fi
-    printf "."; sleep 2
+# Wait for the SERVER, not just the proxy in front of it. nginx starts answering
+# with 502 the moment it is up, so breaking on "anything but 000" let the whole
+# suite run against a backend that had not finished booting -- every check then
+# failed with 502 on a cold start.
+for _ in $(seq 1 45); do
+    code=$(status "$BASE/api/v1/reports/count")
+    case "$code" in
+        000|502|503|504) printf "."; sleep 2 ;;
+        *) break ;;
+    esac
 done
 echo
 
-# ---------------------------------------------------------------- containers
+# ------------------------------------------------------------------ services
 
-head2 "Containers"
-for c in ghostly-server ghostly-client ghostly-ai ghostly-mongo ghostly-redis; do
+head2 "Dependencies"
+for c in ghostly-mongo ghostly-redis; do
     st=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo missing)
-    restarts=$(docker inspect -f '{{.RestartCount}}' "$c" 2>/dev/null || echo "?")
-    if [ "$st" = "running" ]; then green "$c running (restarts: $restarts)"
+    if [ "$st" = "running" ]; then green "$c running"
     else red "$c is '$st'"; fi
 done
 
-# Containers must not be root — this regressed silently once already.
-for c in ghostly-server:node ghostly-ai:appuser; do
-    name="${c%%:*}"; want="${c##*:}"
-    got=$(docker exec "$name" whoami 2>/dev/null || echo "?")
-    if [ "$got" = "$want" ]; then green "$name runs as non-root ($got)"
-    else red "$name runs as '$got' (want $want)"; fi
-done
-
 head2 "Service health"
-expect_code "server /health"        200 "$(status "$BASE/health")"
-ai=$(docker exec ghostly-server sh -c 'wget -qO- http://ai-model:8000/health' 2>/dev/null || echo "")
-if echo "$ai" | grep -q '"status":"ok"'; then green "ai-model reachable from server"; else red "ai-model unreachable from server"; fi
-
-log=$(docker logs ghostly-server 2>&1 | tail -30)
-echo "$log" | grep -q "Redis Connected"                && green "Redis connected"        || red "Redis not connected"
-echo "$log" | grep -q "Socket.IO Redis adapter attached" && green "Socket.IO adapter attached" || red "Socket.IO adapter missing"
-echo "$log" | grep -q "MongoDB Connected"              && green "MongoDB connected"      || red "MongoDB not connected"
+# Reachable directly now. /health used to be probed from inside the container
+# because the proxy in front of it forwarded only /api and /socket.io, so
+# curling it through the proxy fell through to the SPA and returned 200 with
+# index.html -- an assertion that passed with the server completely stopped.
+# There is no proxy any more, so this hits the real endpoint.
+health=$(curl -s -m 10 "$BASE/health" 2>/dev/null || echo "")
+if echo "$health" | grep -q '"status":"OK"'; then
+    green "server /health"
+else
+    red "server /health unreachable (got: ${health:-nothing})"
+fi
 
 # ---------------------------------------------------------------- auth
 
 head2 "Authentication"
-TOKEN=$(curl -s -m 15 -X POST "$BASE/api/session/init" -H 'Content-Type: application/json' -d '{}' \
+TOKEN=$(curl -s -m 15 -X POST "$BASE/api/v1/session/init" -H 'Content-Type: application/json' -d '{}' \
         | python3 -c "import sys,json;print(json.load(sys.stdin).get('token',''))" 2>/dev/null)
 
 [ -n "$TOKEN" ] && green "session init issued a token" || red "session init returned no token"
 case "$TOKEN" in v1.*) green "token is signed (v1 format)";; *) red "token is not in the signed v1 format";; esac
 
-INIT=$(curl -s -m 15 -X POST "$BASE/api/session/init" -H 'Content-Type: application/json' -d '{}')
+INIT=$(curl -s -m 15 -X POST "$BASE/api/v1/session/init" -H 'Content-Type: application/json' -d '{}')
 if echo "$INIT" | grep -q deviceId; then red "response leaks deviceId"; else green "response does not leak deviceId"; fi
 
-expect_code "protected route without a token" 401 "$(status "$BASE/api/protected")"
-expect_code "protected route with a valid token" 200 "$(status -H "Authorization: Bearer $TOKEN" "$BASE/api/protected")"
-expect_code "raw deviceId is not a credential"  401 "$(status -H "Authorization: Bearer 37c8994f-75fd-458f-bc7f-7e9e26749833" "$BASE/api/protected")"
-expect_code "forged token rejected"             401 "$(status -H "Authorization: Bearer v1.ZXZpbA.badsig" "$BASE/api/protected")"
+# These four exercise the session middleware, not the reports feature. They used
+# to hit /api/protected, a debug route dropped in e4a83be -- after which they
+# asserted 401/200 against a 404 and quietly went red. GET /api/reports/count is
+# the stand-in: verifySession-guarded, read-only, and no per-route rate limit.
+AUTHED="$BASE/api/v1/reports/count"
+expect_code "protected route without a token" 401 "$(status "$AUTHED")"
+expect_code "protected route with a valid token" 200 "$(status -H "Authorization: Bearer $TOKEN" "$AUTHED")"
+expect_code "raw deviceId is not a credential"  401 "$(status -H "Authorization: Bearer 37c8994f-75fd-458f-bc7f-7e9e26749833" "$AUTHED")"
+expect_code "forged token rejected"             401 "$(status -H "Authorization: Bearer v1.ZXZpbA.badsig" "$AUTHED")"
 
 head2 "Admin API"
-expect_code "admin route without a token" 401 "$(status "$BASE/api/admin/reports")"
+expect_code "admin route without a token" 401 "$(status "$BASE/api/v1/admin/reports")"
 ADMIN=$(grep '^ADMIN_TOKEN=' .env.production 2>/dev/null | cut -d= -f2)
 if [ -n "$ADMIN" ]; then
-    expect_code "admin route with the real token" 200 "$(status -H "Authorization: Bearer $ADMIN" "$BASE/api/admin/reports")"
+    expect_code "admin route with the real token" 200 "$(status -H "Authorization: Bearer $ADMIN" "$BASE/api/v1/admin/reports")"
 else
     red "ADMIN_TOKEN missing from .env.production (admin API would return 503)"
 fi
 
-# ---------------------------------------------------------------- uploads
+# ------------------------------------------------------------ verification
 
 head2 "Verification endpoint"
-TMP=$(mktemp -d)
-# A valid JPEG containing no face, so the request reaches the detector rather
-# than failing to decode. cv2 lives in the ai-model venv, not system python.
-PY_BIN="python3"
-[ -x ai-model/venv/bin/python ] && PY_BIN="ai-model/venv/bin/python"
-"$PY_BIN" - "$TMP" <<'PY' 2>/dev/null
-import sys, pathlib
-out = pathlib.Path(sys.argv[1]) / "face.jpg"
-try:
-    import cv2, numpy as np
-    cv2.imwrite(str(out), np.full((400, 400, 3), 127, np.uint8))
-except Exception:
-    out.write_bytes(bytes(3000))
-PY
-[ -s "$TMP/face.jpg" ] || head -c 3000 /dev/urandom > "$TMP/face.jpg"
-head -c 6000000 /dev/zero > "$TMP/big.bin"
+# No image is uploaded any more: the frame is classified in the browser and only
+# the resulting claim is POSTed as JSON. That means this endpoint is fully
+# exercisable without a camera -- which is also precisely the trust trade-off,
+# so the "valid claim accepted" case below is asserted deliberately rather than
+# left to be discovered later.
+# Note: verifyLimiter allows 5 requests a minute and counts the 401 too, so keep
+# this block at four.
+post_json() {
+    status -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -X POST -d "$1" "$BASE/api/v1/verify/gender"
+}
 
-expect_code "upload without a token"    401 "$(status -X POST -F "image=@$TMP/face.jpg" "$BASE/api/verify/gender")"
-expect_code "no face detected -> 422"   422 "$(status -H "Authorization: Bearer $TOKEN" -X POST -F "image=@$TMP/face.jpg" "$BASE/api/verify/gender")"
-expect_code "oversized upload -> 413"   413 "$(status -H "Authorization: Bearer $TOKEN" -X POST -F "image=@$TMP/big.bin" "$BASE/api/verify/gender")"
+expect_code "claim without a token"      401 "$(status -H "Content-Type: application/json" -X POST -d '{"gender":"female","confidence":0.95}' "$BASE/api/v1/verify/gender")"
+expect_code "unknown gender -> 400"      400 "$(post_json '{"gender":"other","confidence":0.95}')"
+expect_code "low confidence -> 422"      422 "$(post_json '{"gender":"female","confidence":0.10}')"
+expect_code "valid claim accepted"       200 "$(post_json '{"gender":"female","confidence":0.95}')"
 
-# The point is that a rejected image explains itself rather than surfacing as
-# "AI Service Unavailable", which is what it used to do.
-body=$(curl -s -m 20 -H "Authorization: Bearer $TOKEN" -X POST -F "image=@$TMP/face.jpg" "$BASE/api/verify/gender")
-if echo "$body" | grep -qiE "no face|invalid image"; then
-    green "rejection explains itself: $body"
-elif echo "$body" | grep -qi "unavailable"; then
-    red "regression: image rejection reported as a service outage: $body"
-else
-    red "unexpected error body: $body"
-fi
-rm -rf "$TMP"
 
 # ---------------------------------------------------------------- sockets
 
@@ -160,7 +165,7 @@ printf "  %d passed, %d failed (HTTP layer)\n" "$PASS" "$FAIL"
 
 cat <<'MANUAL'
 
-Still needs a human — open http://localhost:3000
+Still needs a human — run the client (cd client && bun run dev) and open http://localhost:5173
 
   [ ] Clear localStorage for the site first. Old deviceId keys are dead, so you
       will get a fresh session. That is expected, and is what every existing
@@ -168,6 +173,30 @@ Still needs a human — open http://localhost:3000
   [ ] Complete a real webcam verification. This is the one path no automated
       check covers. A good capture should verify; a poor one should show a
       readable message, not a generic failure.
+  [ ] Network tab during capture: the request body is JSON and NO image is
+      uploaded anywhere. This is the headline privacy claim -- confirm it.
+  [ ] Block */face-api/* and capture: a readable "could not read that frame"
+      message and the user can retry. They must not be stuck.
+
+  Face framing gate (client-side pre-check; the server decision is unchanged):
+  [ ] The capture button stays disabled until a single well-framed face is in
+      the oval, and the oval turns green when it unlocks.
+  [ ] Fail-open, model blocked: DevTools -> Network -> block */mediapipe/*, then
+      reload. The button must be ENABLED and no hint pill should appear at all.
+  [ ] Fail-open, escape hatch: stand back until it reads "Move a little closer"
+      and wait ~8s. The button enables and reads "Capture anyway".
+  [ ] Two people in frame reads "Only you should be in frame" — including when
+      the second person is outside the visible crop but still in the raw stream.
+  [ ] Resize across the sm breakpoint (640px) while framed. The verdict must not
+      change: the container is 0.75 aspect below it and 0.92 above.
+  [ ] A portrait phone and a landscape webcam both reach ready at a comfortable
+      arm's length. These crop on opposite axes, so test both if you can.
+  [ ] Throttle to Fast 3G and walk the funnel from the landing page. The wasm
+      should already be cached by the preload, so the camera is usable at once.
+  [ ] Dev console: exactly one "[useFaceFraming] detector ready" per camera
+      start, even under StrictMode's double mount.
+  [ ] A gated capture still returns verified/gender/userHash and lands you in
+      matchmaking.
   [ ] Open a second browser (or a private window), verify both, and chat.
       Confirm the lock/encryption indicator appears for both sides.
   [ ] Watch the typing indicator: it should appear once and clear about 3s

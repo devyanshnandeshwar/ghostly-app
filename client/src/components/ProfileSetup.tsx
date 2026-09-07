@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { AlertCircle, ArrowRight, Lock } from "lucide-react";
-import { FREE_FILTERS_PER_DAY } from "@shared/constants";
 
 import api from "../services/client";
 import { useSession } from "../context/SessionContext";
@@ -10,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage } from "@/lib/apiError";
 
 interface ProfileSetupProps {
   onComplete: () => void;
@@ -33,12 +33,12 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // filtersUsedToday is the enforced allowance. dailyFilterUsage is a lifetime
-  // counter that never resets, and reading it here locked these controls
-  // permanently after five filtered matches ever.
-  const filtersUsed = session?.filtersUsedToday ?? 0;
-  const filtersLeft = Math.max(0, FREE_FILTERS_PER_DAY - filtersUsed);
-  const filtersLocked = session?.filtersUsedToday !== undefined && filtersLeft === 0;
+  // Server-supplied. dailyFilterUsage is a lifetime counter that never resets,
+  // and reading it here locked these controls permanently after five filtered
+  // matches ever.
+  const filtersLeft = session?.filtersRemaining ?? 0;
+  const filtersTotal = session?.filtersTotal ?? 0;
+  const filtersLocked = session?.filtersRemaining !== undefined && filtersLeft === 0;
   // The radios only stop a locked value being SELECTED. A preference saved
   // before the allowance ran out is still in state, so the submit path needs
   // its own guard.
@@ -64,9 +64,9 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
         preference,
       });
       onComplete();
-    } catch (err: any) {
+    } catch (err) {
       console.error("Profile update failed:", err);
-      setError(err.response?.data?.error || "Failed to update profile");
+      setError(apiErrorMessage(err, "Failed to update profile"));
     } finally {
       setLoading(false);
     }
@@ -125,14 +125,14 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
         <fieldset className="space-y-2">
           <div className="flex items-baseline justify-between gap-2">
             <legend className="text-sm font-medium">Match me with</legend>
-            {session?.filtersUsedToday !== undefined && (
+            {session?.filtersRemaining !== undefined && (
               <span
                 className={cn(
                   "font-mono text-xs tabular-nums",
                   filtersLocked ? "text-muted-foreground" : "text-primary"
                 )}
               >
-                {filtersLeft}/{FREE_FILTERS_PER_DAY} filters left
+                {filtersLeft}/{filtersTotal} filters left
               </span>
             )}
           </div>

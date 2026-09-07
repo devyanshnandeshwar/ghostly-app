@@ -14,7 +14,24 @@ export function useChat(roomId: string | null) {
     // E2EE State
     const [keyPair, setKeyPair] = useState<CryptoKeyPair | null>(null);
     const [sharedKey, setSharedKey] = useState<CryptoKey | null>(null);
+    const [partnerKey, setPartnerKey] = useState<JsonWebKey | null>(null);
     const initRef = useRef<string | null>(null);
+
+    // Resynchronise the crypto state when the room changes, using React's
+    // documented "adjusting state when a prop changes" pattern rather than an
+    // effect. Doing it in an effect meant a render with the previous room's
+    // sharedKey still live, which is a cascading render at best and the wrong
+    // key at worst. React re-renders immediately here, before children see the
+    // stale value.
+    const [prevRoomId, setPrevRoomId] = useState(roomId);
+
+    if (roomId !== prevRoomId) {
+        setPrevRoomId(roomId);
+        setMessages([]);
+        setIsEncrypted(false);
+        setSharedKey(null);
+        setPartnerKey(null);
+    }
 
     useEffect(() => {
         if (!roomId || !socket) return;
@@ -24,15 +41,9 @@ export function useChat(roomId: string | null) {
         initRef.current = roomId;
 
         console.log("[useChat] Joining room:", roomId);
-        
-        // Reset State
-        setMessages([]);
-        setIsEncrypted(false);
-        setSharedKey(null);
-        setPartnerKey(null);
-        // We don't nullify keyPair here because we're about to set it, 
-        // and we want to avoid extra effect triggers if possible. 
-        // But logic below generates new keys anyway.
+
+        // keyPair is not cleared: the block above handles room-change resets, and
+        // this effect regenerates it immediately below.
 
         // 1. Generate & Exchange Keys
         const setupEncryption = async () => {
@@ -51,20 +62,19 @@ export function useChat(roomId: string | null) {
         socket.emit("join-room", roomId);
         setupEncryption();
 
-        return () => {
-            socket.off("receive-message");
-            socket.off("partner-typing");
-            socket.off("exchange-key");
-            
-            // Note: We do NOT reset initRef.current here because cleanup runs on unmount,
-            // but we want to persist the "initialized" state across Strict Mode remounts.
-            // We only want to re-init if roomId changes (handled by dependency array & check above).
-        };
+        // No cleanup that touches listeners: this effect registers none. It used
+        // to call socket.off("receive-message"/"partner-typing"/"exchange-key")
+        // with no handler argument, which removes EVERY listener for those
+        // events -- including the ones the effects below registered. On a room
+        // change (deps include roomId) that silently tore down the partner-key
+        // and typing handlers, whose own effects key on [socket] and so did not
+        // re-register. Each effect below removes its own handler by reference.
+        //
+        // initRef is deliberately not reset: it exists to survive StrictMode's
+        // double invoke within one mount, and re-init is driven by roomId changing.
 
     }, [roomId, socket]);
     
-    const [partnerKey, setPartnerKey] = useState<JsonWebKey | null>(null);
-
     // Listen for partner key - Decoupled from local key generation to prevent race conditions
     useEffect(() => {
         if (!socket) return;
@@ -194,26 +204,12 @@ export function useChat(roomId: string | null) {
         }
     };
     
-    const reportUser = async (reason: string, description?: string) => {
+    // Deliberately does not refresh the session: the Navbar badge counts reports
+    // filed AGAINST this user, and reporting someone else does not change it.
+    const reportUser = (reason: string, description?: string) => {
         if (socket) {
             socket.emit("report-user", { reason, description });
             console.log("[useChat] Reported user for:", reason);
-             // Trigger session refresh to update counts (if we were the one reported? No, this updates if WE report someone, but actually report counts on navbar are reports AGAINST us.)
-             // Wait, if I report someone, MY report count doesn't go up. 
-             // BUT, the prompt says "Refresh after reporting event". 
-             // Maybe it means "fetch on app load" AND "Refresh after reporting event".
-             // If I report someone, `totalReports` (my reports made) goes up. 
-             // `reportsAgainst` goes up for the OTHER person.
-             // Navbar shows `reportsAgainst`. So reporting someone else shouldn't change MY navbar badge.
-             // BUT if the prompt implies getting reported... 
-             // Actually, `free tier usage` updates on MATCH.
-             
-             // Let's look at the Prompt again: "Refresh after reporting event". 
-             // Maybe it implies updating the "Reporter's" stats if we show "Total Reports Made"? 
-             // Navbar badge says "Reports: 12" -> "behavior: Red indicator if reports > threshold". This implies reports AGAINST user.
-             
-             // So, refreshing session when I report someone doesn't change MY badge.
-             // However, `MatchContext` handles matches.
         }
     };
     

@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, mock } from "bun:test";
 import { FakeRedis } from "../testing/fakeRedis";
-import { FREE_FILTERS_PER_DAY, FILTER_WINDOW_SECONDS } from "@shared/constants";
+import { FREE_FILTERS_PER_DAY, FILTER_WINDOW_SECONDS } from "../config/limits";
 import { filtersRemaining, getFilterUsage, hasFilterQuota, consumeFilter } from "./quota.service";
 
 const redis = new FakeRedis();
@@ -28,7 +28,25 @@ describe("filtersRemaining", () => {
 
 describe("getFilterUsage", () => {
     test("reports nothing used and no pending reset for a fresh session", async () => {
-        expect(await getFilterUsage("sess-new")).toEqual({ used: 0, resetInSeconds: 0 });
+        expect(await getFilterUsage("sess-new")).toEqual({
+            used: 0,
+            remaining: FREE_FILTERS_PER_DAY,
+            total: FREE_FILTERS_PER_DAY,
+            resetInSeconds: 0
+        });
+    });
+
+    // The client must not need its own copy of the allowance: a second copy is
+    // how the quota UI came to disagree with the server in the first place.
+    // Shipping the total over the wire is what lets shared/ be deleted.
+    test("carries the allowance itself, so the client needs no constant", async () => {
+        await consumeFilter("sess-1");
+
+        const usage = await getFilterUsage("sess-1");
+
+        expect(usage.total).toBe(FREE_FILTERS_PER_DAY);
+        expect(usage.remaining).toBe(FREE_FILTERS_PER_DAY - 1);
+        expect(usage.used + usage.remaining).toBe(usage.total);
     });
 
     test("reports what has actually been consumed", async () => {
@@ -38,6 +56,7 @@ describe("getFilterUsage", () => {
         const usage = await getFilterUsage("sess-1");
 
         expect(usage.used).toBe(2);
+        expect(usage.remaining).toBe(FREE_FILTERS_PER_DAY - 2);
         expect(usage.resetInSeconds).toBe(FILTER_WINDOW_SECONDS);
     });
 });
@@ -84,6 +103,11 @@ describe("hasFilterQuota", () => {
         redis.advance(FILTER_WINDOW_SECONDS * 1000 + 1);
 
         expect(await hasFilterQuota("sess-1")).toBe(true);
-        expect(await getFilterUsage("sess-1")).toEqual({ used: 0, resetInSeconds: 0 });
+        expect(await getFilterUsage("sess-1")).toEqual({
+            used: 0,
+            remaining: FREE_FILTERS_PER_DAY,
+            total: FREE_FILTERS_PER_DAY,
+            resetInSeconds: 0
+        });
     });
 });

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { initSession as requestSession, type Session } from "../services/session";
 
 interface SessionContextType {
@@ -13,7 +13,10 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const initSession = async () => {
+    // Stable identity: consumers put refreshSession in effect dependency arrays
+    // (MatchContext does), and a new function every render would tear down and
+    // re-register their socket listeners on every render.
+    const initSession = useCallback(async () => {
         try {
             setSession(await requestSession());
         } catch (error) {
@@ -21,17 +24,20 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         initSession();
-    }, []);
+    }, [initSession]);
 
-    return (
-        <SessionContext.Provider value={{ session, loading, refreshSession: initSession }}>
-            {children}
-        </SessionContext.Provider>
+    // Memoised for the same reason: a fresh object every render re-renders every
+    // consumer of this context, which is most of the app.
+    const value = useMemo(
+        () => ({ session, loading, refreshSession: initSession }),
+        [session, loading, initSession]
     );
+
+    return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 };
 
 export const useSession = () => {

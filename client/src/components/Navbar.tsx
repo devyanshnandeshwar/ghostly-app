@@ -1,5 +1,4 @@
 import { AlertTriangle, Ghost } from "lucide-react";
-import { FREE_FILTERS_PER_DAY } from "@shared/constants";
 
 import { ModeToggle } from "./mode-toggle";
 import { useSession } from "../context/SessionContext";
@@ -14,11 +13,12 @@ export function Navbar({ onLogoClick }: NavbarProps) {
   const timeLeft = useCountdown(session?.filtersResetInSeconds);
 
   const isLoggedIn = Boolean(session?.isVerified && session?.nickname);
-  // filtersUsedToday, not dailyFilterUsage: the latter is a lifetime counter
-  // that never resets, so reading it here locked the pill at 0/5 forever.
-  const used = session?.filtersUsedToday ?? 0;
-  const filtersLeft = Math.max(0, FREE_FILTERS_PER_DAY - used);
-  const filtersExhausted = session?.filtersUsedToday !== undefined && filtersLeft === 0;
+  // Both numbers come from the server. Deriving them here needed a local copy
+  // of the allowance, and a second copy is how this pill came to contradict the
+  // server it was reporting on.
+  const filtersLeft = session?.filtersRemaining ?? 0;
+  const filtersTotal = session?.filtersTotal ?? 0;
+  const filtersExhausted = session?.filtersRemaining !== undefined && filtersLeft === 0;
   const reportCount = session?.reportsAgainst || 0;
 
   return (
@@ -37,7 +37,7 @@ export function Navbar({ onLogoClick }: NavbarProps) {
         </button>
 
         <div className="ml-auto flex items-center gap-2">
-          {isLoggedIn && session?.filtersUsedToday !== undefined && (
+          {isLoggedIn && session?.filtersRemaining !== undefined && (
             <span
               title={
                 filtersExhausted
@@ -51,7 +51,7 @@ export function Navbar({ onLogoClick }: NavbarProps) {
               }`}
             >
               <span className="font-mono tabular-nums text-foreground">
-                {filtersLeft}/{FREE_FILTERS_PER_DAY}
+                {filtersLeft}/{filtersTotal}
               </span>
               filters
               {filtersExhausted && timeLeft && (

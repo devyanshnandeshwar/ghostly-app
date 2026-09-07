@@ -109,11 +109,8 @@ export async function decryptMessage(
 
         const decoder = new TextDecoder();
         return decoder.decode(decryptedBuffer);
-    } catch (err: any) {
-        // console.error("Decryption failed:", err);
-        // console.error("Ciphertext:", ciphertext);
-        // console.error("IV:", iv);
-        return "⚠️ Decryption Failed: " + (err.message || "Key Mismatch");
+    } catch (err) {
+        return "⚠️ Decryption Failed: " + (err instanceof Error ? err.message : "Key Mismatch");
     }
 }
 
