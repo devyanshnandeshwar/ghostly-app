@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { buildCorsOrigins } from "./cors";
+import { assertUsableSessionSecret } from "./sessionSecret";
 
 // Load .env file
 const envPath = path.resolve(__dirname, "../../.env");
@@ -14,7 +15,7 @@ if (fs.existsSync(envPath)) {
 const defaultClientUrl = "http://localhost:5173";
 const clientUrl = process.env.CLIENT_URL || defaultClientUrl;
 
-const INSECURE_SESSION_SECRET = "supersecret";
+const DEV_SESSION_SECRET = "supersecret";
 
 const nodeEnv = process.env.NODE_ENV || "development";
 
@@ -26,7 +27,7 @@ export const config = {
     // entries are development-only. See cors.ts.
     CORS_ORIGINS: buildCorsOrigins(clientUrl, nodeEnv),
     NODE_ENV: nodeEnv,
-    SESSION_SECRET: process.env.SESSION_SECRET || INSECURE_SESSION_SECRET,
+    SESSION_SECRET: process.env.SESSION_SECRET || DEV_SESSION_SECRET,
     // No default: admin routes fail closed when this is unset.
     ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
     // Minimum model confidence required to mark a session as verified.
@@ -45,10 +46,9 @@ if (missingVars.length > 0) {
     console.warn(`[Config] ⚠️  Missing required environment variables: ${missingVars.join(", ")}`);
 }
 
-// SESSION_SECRET signs session tokens. A known default in production would let
-// anyone forge a credential for any session, so refuse to boot.
-if (config.NODE_ENV === "production" && config.SESSION_SECRET === INSECURE_SESSION_SECRET) {
-    throw new Error(
-        "[Config] SESSION_SECRET must be set to a strong random value in production"
-    );
-}
+// SESSION_SECRET signs session tokens. A known or guessable value in production
+// would let anyone forge a credential for any session, so refuse to boot. The
+// check lives in sessionSecret.ts because it is worth testing on its own -- the
+// version that lived here compared against a single literal and missed the
+// placeholder .env.example actually ships.
+assertUsableSessionSecret(config.SESSION_SECRET, config.NODE_ENV);
