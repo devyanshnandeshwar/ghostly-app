@@ -1,0 +1,61 @@
+# Gates every change on the checks that were previously never run anywhere.
+#
+# The pipeline this replaces built Docker images and pushed them to a registry
+# the deploy script then ignored, because the script rebuilt from source on the
+# VM. It ran no tests, no typecheck, no lint. Deployment is now git-push on
+# Vercel and Render, so CI's only job is to stop a broken commit reaching them.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Read from .bun-version so CI, local and Render cannot drift. Render
+          # defaults to 1.3.14, which cannot import mongoose at all.
+          bun-version-file: server/.bun-version
+
+      - run: bun install --frozen-lockfile
+
+      # Bun strips types rather than checking them, so without this step no
+      # type error would ever fail a build.
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: server/.bun-version
+
+      - run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      # `build` is `tsc -b && vite build`, so this typechecks the client too.
+      - name: Build
+        run: bun run build

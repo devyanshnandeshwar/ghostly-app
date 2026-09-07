@@ -1,0 +1,59 @@
+# Nightly logical backup of MongoDB Atlas.
+#
+# Atlas M0 includes no automated backup and no point-in-time restore, so
+# without this a cluster failure or a bad migration is unrecoverable. This is
+# not PITR: granularity is one day and history is bounded by artifact
+# retention. It turns total loss into losing at most a day.
+
+name: Backup
+
+on:
+  schedule:
+    # 03:17 UTC. Deliberately not on the hour, where scheduled-job load spikes.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  mongodump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install MongoDB database tools
+        run: |
+          curl -fsSL https://pgp.mongodb.com/server-7.0.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/mongodb.gpg
+          echo "deb [signed-by=/usr/share/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
+            | sudo tee /etc/apt/sources.list.d/mongodb.list
+          sudo apt-get update && sudo apt-get install -y mongodb-database-tools
+
+      - name: Dump
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+        run: |
+          set -euo pipefail
+          test -n "$MONGO_URI" || { echo "MONGO_URI secret is not set"; exit 1; }
+          mongodump --uri="$MONGO_URI" --archive="dump.gz" --gzip
+          # Fail loudly on an empty dump rather than uploading a useless file
+          # and reporting success -- a backup nobody checks is a hypothesis.
+          test -s dump.gz
+
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_PASSPHRASE" || { echo "BACKUP_PASSPHRASE secret is not set"; exit 1; }
+          # Artifacts are readable by anyone with repo access; abuse reports are
+          # not something to leave lying around in clear text.
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase "$BACKUP_PASSPHRASE" --output dump.gz.gpg dump.gz
+          rm dump.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mongo-backup-${{ github.run_id }}
+          path: dump.gz.gpg
+          retention-days: 30
+
+# Restore (run it once before trusting any of this):
+#   gpg --batch --passphrase "$BACKUP_PASSPHRASE" --decrypt dump.gz.gpg > dump.gz
+#   mongorestore --uri="$TARGET_URI" --archive=dump.gz --gzip --drop

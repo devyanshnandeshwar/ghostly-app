@@ -1,0 +1,49 @@
+# Render deployment for the Ghostly API.
+#
+# The SPA is NOT here -- it is a static build on Vercel. This service is the
+# Express + Socket.IO API only.
+services:
+  - type: web
+    name: ghostly-api
+    runtime: node          # Render's native runtime; Bun is selected by .bun-version
+    plan: free
+    rootDir: server
+    buildCommand: bun install --frozen-lockfile
+    startCommand: bun src/server.ts
+
+    # 2xx within 5 seconds or the instance is considered unhealthy. /health does
+    # not touch Mongo or Redis on purpose: a liveness probe that fails when a
+    # dependency blips causes a restart loop instead of reporting one.
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Comma-separated. Must list every origin the SPA is actually served from
+      # -- the Vercel domain AND any custom domain. A missing origin does not
+      # degrade: the socket handshake is refused outright.
+      - key: CLIENT_URL
+        sync: false
+
+      # MongoDB Atlas connection string, including credentials.
+      - key: MONGO_URI
+        sync: false
+
+      # Upstash Redis. Use the rediss:// (TLS) endpoint.
+      - key: REDIS_URL
+        sync: false
+
+      # openssl rand -hex 32. Rotating this signs out every user, so treat it as
+      # a last resort -- per-session revocation exists for the normal case.
+      - key: SESSION_SECRET
+        generateValue: true
+
+      # Bearer token for /api/admin/*. Unset leaves those routes returning 503.
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+      - key: MIN_VERIFY_CONFIDENCE
+        value: "0.85"
+      - key: REPORT_RETENTION_DAYS
+        value: "365"
