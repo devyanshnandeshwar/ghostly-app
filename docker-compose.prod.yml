@@ -47,17 +47,6 @@ services:
     networks:
       - ghostly-net
 
-  ai-model:
-    build:
-      context: .
-      dockerfile: ai-model/Dockerfile
-    container_name: ghostly-ai
-    restart: unless-stopped
-    expose:
-      - "8000"
-    networks:
-      - ghostly-net
-
   server:
     build:
       context: .
@@ -70,7 +59,6 @@ services:
       - "5000"
     depends_on:
       - mongo
-      - ai-model
       - redis
     networks:
       - ghostly-net

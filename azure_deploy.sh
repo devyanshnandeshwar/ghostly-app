@@ -10,20 +10,12 @@ echo "================================================================"
 echo "👻 Starting Ghostly Azure Production Setup..."
 echo "================================================================"
 
-# 1. Setup 4GB Swap Space (Prevent Out-Of-Memory crashes during AI Model loading)
-if [ -f /swapfile ]; then
-    echo "✅ Swap space already exists. Skipping swap creation."
-else
-    echo "⚙️  Creating 4GB Linux Swap space for AI Model stability..."
-    sudo fallocate -l 4G /swapfile
-    sudo chmod 600 /swapfile
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-    echo "✅ 4GB Swap space created and enabled."
-fi
+# The 4GB swap that used to be provisioned here existed to survive building
+# opencv and numpy for the Python AI service on two burstable vCPUs. That
+# service is gone -- verification now runs in the browser -- so nothing heavy is
+# compiled on this VM any more.
 
-# 2. Check and Install Docker & Docker Compose
+# 1. Check and Install Docker & Docker Compose
 if ! command -v docker &> /dev/null; then
     echo "⚙️  Installing Docker Engine & Docker Compose..."
     sudo apt-get update
@@ -43,7 +35,7 @@ else
     echo "✅ Docker is already installed."
 fi
 
-# 3. Check and Create .env.production if missing (since .env* is gitignored)
+# 2. Check and Create .env.production if missing (since .env* is gitignored)
 echo "⚙️  Checking environment configuration..."
 if [ ! -f .env.production ]; then
     echo "⚠️  .env.production not found (likely ignored by git). Creating production config..."
@@ -58,7 +50,6 @@ NODE_ENV=production
 SESSION_SECRET=$(openssl rand -hex 32)
 ADMIN_TOKEN=$(openssl rand -hex 32)
 MIN_VERIFY_CONFIDENCE=0.85
-AI_MODEL_URL=http://ai-model:8000/api/verify-gender
 REDIS_URL=redis://redis:6379
 EOF
     chmod 600 .env.production
@@ -115,7 +106,7 @@ else
     fi
 fi
 
-# 4. Build and Launch Production Docker Stack
+# 3. Build and Launch Production Docker Stack
 # No `down` and no --force-recreate: those tore the whole stack offline on
 # every deploy, including mongo and redis which rarely change. Compose only
 # recreates services whose image or config actually differs.
@@ -125,14 +116,21 @@ sudo docker compose -f docker-compose.prod.yml build
 echo "🚀 Rolling out changed services..."
 sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
-# The frontend used to be its own nginx container. It is now baked into the
-# Caddy image, so the old container is not part of the stack any more.
-# --remove-orphans handles it only when the labels match; a container created by
-# an older compose version can survive and keep answering on the network.
-if sudo docker ps -a --format '{{.Names}}' | grep -qx 'ghostly-client'; then
-    echo "🧹 Removing ghostly-client, left over from the pre-Caddy stack..."
-    sudo docker rm -f ghostly-client >/dev/null 2>&1 || true
-fi
+# Containers from services this stack no longer has:
+#   ghostly-client - the frontend is baked into the Caddy image now
+#   ghostly-ai     - verification moved into the browser; the service is deleted
+# --remove-orphans handles these only when the labels match; a container created
+# by an older compose version can survive and keep answering on the network.
+for stale in ghostly-client ghostly-ai; do
+    if sudo docker ps -a --format '{{.Names}}' | grep -qx "$stale"; then
+        echo "🧹 Removing $stale, left over from an earlier stack..."
+        sudo docker rm -f "$stale" >/dev/null 2>&1 || true
+    fi
+done
+
+# The ai-model image is ~598MB and nothing references it any more. image prune
+# below only removes dangling layers, so this one is named explicitly.
+sudo docker image rm -f ghostly-ai-model >/dev/null 2>&1 || true
 
 echo "🧹 Removing images left dangling by this build..."
 sudo docker image prune -f >/dev/null 2>&1 || true
@@ -142,7 +140,7 @@ sudo docker image prune -f >/dev/null 2>&1 || true
 echo "🔍 Verifying the stack came up..."
 sleep 10
 DEPLOY_OK=1
-for svc in caddy server ai-model mongo redis; do
+for svc in caddy server mongo redis; do
     cid=$(sudo docker compose -f docker-compose.prod.yml ps -q "$svc" 2>/dev/null)
     if [ -z "$cid" ]; then
         echo "   ❌ $svc has no container"
