@@ -41,8 +41,6 @@ Thumbs.db
 server/dist/
 client/dist/
 shared/dist/
-# ai-model/gender_net.caffemodel
-# ai-model/opencv_face_detector_uint8.pb
 
 # Deployment docs
 hosting/
@@ -50,5 +48,3 @@ hosting/
 # Local Demo Scripts
 DEMO_SCRIPT.md
 
-# Regenerable via ai-model/tools/caffe_to_onnx.py
-ai-model/gender_net.onnx
