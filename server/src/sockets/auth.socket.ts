@@ -1,11 +1,14 @@
 import { Socket } from "socket.io";
-import { UserSession } from "../models/UserSession";
-import { IUserSession } from "../types/User";
 import { verifySessionToken } from "../utils/token";
-import { touchLastActive } from "../services/session.service";
+import { touchLastActive, getAuthSession } from "../services/session.service";
 
-
-
+/**
+ * Authenticates a socket handshake.
+ *
+ * Same short-lived cache as the HTTP path, for the same reason: this ran a
+ * Mongo findOne on every connection, and a free-tier instance waking from
+ * spin-down takes every reconnect at once.
+ */
 export async function socketAuth(
     socket: Socket,
     next: (err?: Error) => void
@@ -23,9 +26,7 @@ export async function socketAuth(
             return next(new Error("Invalid session"));
         }
 
-        // We use lean() to get a plain JS object which matches IUserSession interface better than a Mongoose document
-        // Casting as unknown as IUserSession safely
-        const session = await UserSession.findOne({ deviceId: payload.deviceId }).lean();
+        const session = await getAuthSession(payload.deviceId);
 
         if (!session) {
             return next(new Error("Invalid session"));
@@ -33,16 +34,15 @@ export async function socketAuth(
 
         // Same revocation check as the HTTP path: a bumped tokenVersion must
         // close the socket door too, or revocation only half works.
-        if (((session as any).tokenVersion ?? 0) !== payload.version) {
+        if (session.tokenVersion !== payload.version) {
             return next(new Error("Session expired"));
         }
 
-        // Attach session to socket
-        socket.data.session = session as unknown as IUserSession;
+        socket.data.session = session as any;
 
         // Connecting counts as activity. Throttled internally, so this is not
         // a write on every connection.
-        touchLastActive(String((session as any)._id)).catch(() => {});
+        touchLastActive(session._id).catch(() => {});
 
         next();
 

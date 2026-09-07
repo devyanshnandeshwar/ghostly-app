@@ -31,6 +31,55 @@ export const getSessionByDeviceId = async (deviceId: string) => {
 };
 
 /**
+ * The authentication path's view of a session.
+ *
+ * Every authenticated HTTP request and every socket handshake did a Mongo
+ * findOne, so the database sat synchronously in front of the entire product:
+ * when it was slow everything was slow, and when it was down nobody could even
+ * connect. The queue path was given a cache for exactly this reason while the
+ * far hotter auth path was not.
+ *
+ * Deliberately carries only identity and tokenVersion. Mutable state like
+ * status lives in the queue session view, which updateSession invalidates;
+ * caching it here too would create a second copy that nothing invalidates.
+ *
+ * Short TTL regardless, because tokenVersion is what revocation turns on. Ten
+ * seconds bounds how long a revoked token keeps working if the explicit
+ * invalidation below is ever missed.
+ */
+const AUTH_CACHE_TTL_MS = 10_000;
+
+export interface AuthSessionView {
+    _id: string;
+    deviceId: string;
+    tokenVersion: number;
+}
+
+const authViews = new TtlCache<AuthSessionView>(AUTH_CACHE_TTL_MS);
+
+export async function getAuthSession(deviceId: string): Promise<AuthSessionView | null> {
+    const cached = authViews.get(deviceId);
+    if (cached) return cached;
+
+    const session = await UserSession.findOne({ deviceId }).lean();
+    if (!session) return null;
+
+    const view: AuthSessionView = {
+        _id: String((session as any)._id),
+        deviceId: (session as any).deviceId,
+        tokenVersion: (session as any).tokenVersion ?? 0
+    };
+
+    authViews.set(deviceId, view);
+    return view;
+}
+
+/** Drop a session's cached auth view, so a revocation takes effect at once. */
+export function invalidateAuthCache(deviceId: string) {
+    authViews.delete(deviceId);
+}
+
+/**
  * Fields the matchmaking path reads. Cached in Redis so joining the queue
  * doesn't cost a Mongo round trip every time, while still picking up profile
  * and verification changes quickly.
@@ -179,6 +228,13 @@ export async function touchLastActive(sessionId: string) {
  * only lever was rotating SESSION_SECRET, which signs out every user at once.
  */
 export async function revokeSession(sessionId: string) {
-    await UserSession.findByIdAndUpdate(sessionId, { $inc: { tokenVersion: 1 } });
+    const updated = await UserSession.findByIdAndUpdate(
+        sessionId,
+        { $inc: { tokenVersion: 1 } },
+        { new: true }
+    );
     await invalidateSessionCache(sessionId);
+    // Without this the revoked token keeps working for the auth cache's TTL,
+    // which defeats the point of revoking it.
+    if (updated?.deviceId) invalidateAuthCache(updated.deviceId);
 }

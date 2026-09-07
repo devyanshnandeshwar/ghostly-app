@@ -1,8 +1,20 @@
 import { Request, Response, NextFunction } from "express";
-import { UserSession } from "../models/UserSession";
 import { logger } from "../utils/logger";
 import { parseBearer, verifySessionToken } from "../utils/token";
+import { getAuthSession } from "../services/session.service";
 
+/**
+ * Authenticates a request from its signed session token.
+ *
+ * Reads through a short-lived cache rather than hitting Mongo on every call.
+ * The database previously sat synchronously in front of every authenticated
+ * request and every socket handshake, so it was both the throughput ceiling and
+ * the availability floor: slow Mongo meant a slow product, and unreachable
+ * Mongo meant nobody could connect at all.
+ *
+ * The attached session carries only what authorisation needs. Handlers wanting
+ * more read it themselves, which keeps the hot path small.
+ */
 export async function verifySession(
     req: Request,
     res: Response,
@@ -25,7 +37,7 @@ export async function verifySession(
             });
         }
 
-        const session = await UserSession.findOne({ deviceId: payload.deviceId });
+        const session = await getAuthSession(payload.deviceId);
 
         if (!session) {
             return res.status(401).json({
@@ -35,13 +47,12 @@ export async function verifySession(
 
         // A bumped tokenVersion revokes this session's outstanding credentials
         // without touching anyone else's.
-        if ((session.tokenVersion ?? 0) !== payload.version) {
+        if (session.tokenVersion !== payload.version) {
             return res.status(401).json({
                 error: "Session expired"
             });
         }
 
-        // Attach session to request
         (req as any).session = session;
 
         next();

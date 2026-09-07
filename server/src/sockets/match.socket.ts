@@ -4,6 +4,7 @@ import { setActiveMatch, getActiveMatch, clearActiveMatch } from "../services/pr
 import { getQueueSessionView, updateSession } from "../services/session.service";
 import { hasFilterQuota, consumeFilter } from "../services/quota.service";
 import { canEnterQueue } from "../services/moderation.policy";
+import { rememberMatchUpdate } from "../services/matchHistory";
 import { logger } from "../utils/logger";
 import type { SessionSocket } from "./socketManager";
 
@@ -172,8 +173,11 @@ async function updateMatchHistory(id1: string, id2: string) {
     // updateSession invalidates the cached view, without which the next
     // join-queue inside the cache TTL reads a pastMatches list that does not
     // include this match yet -- and pairs the two of them straight back up.
-    await updateSession(id1, { $addToSet: { pastMatches: id2 } });
-    await updateSession(id2, { $addToSet: { pastMatches: id1 } });
+    //
+    // Bounded rather than $addToSet: the array was pruned by nothing and grew
+    // for the life of the account. See matchHistory.ts for the trade.
+    await updateSession(id1, rememberMatchUpdate(id2));
+    await updateSession(id2, rememberMatchUpdate(id1));
 }
 
 async function updateUsage(user: any) {
