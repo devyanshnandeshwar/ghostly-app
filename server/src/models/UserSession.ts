@@ -85,6 +85,18 @@ const UserSessionSchema = new mongoose.Schema(
             default: "active"
         },
 
+        // Self-declared, and stored so the declaration is on record rather than
+        // implied. Not identity verification and must not be described as one.
+        birthDate: {
+            type: Date,
+            default: null
+        },
+
+        ageConfirmedAt: {
+            type: Date,
+            default: null
+        },
+
         totalReports: {
             type: Number,
             default: 0

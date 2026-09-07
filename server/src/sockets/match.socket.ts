@@ -19,6 +19,11 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
                 return;
             }
 
+            if (!currentSession.ageConfirmed) {
+                socket.emit("queue-error", "Please confirm your age before matching.");
+                return;
+            }
+
             if (!currentSession.isVerified || !currentSession.gender) {
                 socket.emit("queue-error", "Verification required");
                 return;

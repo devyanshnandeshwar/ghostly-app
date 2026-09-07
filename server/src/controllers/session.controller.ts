@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { createSession, getSessionByDeviceId, touchLastActive, revokeSession } from "../services/session.service";
 import { issueSessionToken, verifySessionToken } from "../utils/token";
+import { isAdult, parseBirthDate, MINIMUM_AGE_YEARS } from "../services/age.policy";
+import { updateSession } from "../services/session.service";
 import { getFilterUsage } from "../services/quota.service";
 
 export const init = async (req: Request, res: Response, next: NextFunction) => {
@@ -47,6 +49,7 @@ export const init = async (req: Request, res: Response, next: NextFunction) => {
             token: issuedToken,
             // The whole allowance, not just what is spent: the client renders
             // these numbers and must not carry its own copy of the limit.
+            ageConfirmed: Boolean((session as any).ageConfirmedAt),
             filtersUsedToday: filters.used,
             filtersRemaining: filters.remaining,
             filtersTotal: filters.total,
@@ -79,6 +82,38 @@ export const logout = async (req: Request, res: Response, next: NextFunction) =>
         const session = (req as any).session;
         await revokeSession(session._id);
         res.json({ success: true });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Records the age declaration.
+ *
+ * Self-declared, so this is a statement of terms rather than a proof. It gives
+ * the product a defensible position and the report flow something to act
+ * against; it is not identity verification.
+ */
+export const confirmAge = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const session = (req as any).session;
+        const birthDate = parseBirthDate(req.body?.birthDate);
+
+        if (!birthDate) {
+            return res.status(400).json({ error: "A valid date of birth is required." });
+        }
+
+        if (!isAdult(birthDate)) {
+            // Deliberately not recorded as a confirmed session: a refused
+            // declaration must not leave the account half-gated.
+            return res.status(403).json({
+                error: `You must be ${MINIMUM_AGE_YEARS} or over to use Ghostly.`
+            });
+        }
+
+        await updateSession(session._id, { birthDate, ageConfirmedAt: new Date() });
+
+        res.json({ success: true, ageConfirmed: true });
     } catch (error) {
         next(error);
     }

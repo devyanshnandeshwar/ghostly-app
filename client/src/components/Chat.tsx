@@ -54,14 +54,18 @@ export default function Chat({ roomId, partner }: ChatProps) {
             <Ghost className="size-5" />
           </span>
           <span
-            title={isEncrypted ? "End-to-end encrypted" : "Exchanging keys"}
+            title={
+              isEncrypted
+                ? "Encrypted in this browser. Keys are relayed by the server, so this protects against network eavesdroppers rather than against Ghostly itself."
+                : "Exchanging keys"
+            }
             className={`absolute -bottom-0.5 -right-0.5 grid size-4 place-items-center rounded-full border-2 border-card ${
               isEncrypted ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"
             }`}
           >
             {isEncrypted ? <ShieldCheck className="size-2.5" /> : <LockKeyhole className="size-2.5" />}
             <span className="sr-only">
-              {isEncrypted ? "End-to-end encrypted" : "Exchanging encryption keys"}
+              {isEncrypted ? "Encrypted in transit" : "Exchanging encryption keys"}
             </span>
           </span>
         </div>
@@ -81,7 +85,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
               {isEncrypted ? (
                 <>
                   <ShieldCheck className="size-3" />
-                  End-to-end encrypted
+                  Encrypted in transit
                 </>
               ) : (
                 <>

@@ -1,8 +1,11 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Ghost, RotateCw } from "lucide-react";
 
+import { preloadFaceFraming } from "./hooks/useFaceFraming";
+import { loadGenderClassifier } from "./lib/genderClassifier";
 import { useSession } from "./context/SessionContext";
 import { useMatch } from "./context/MatchContext";
+import { AgeGate } from "./components/AgeGate";
 import { LandingPage } from "./components/LandingPage";
 import { Navbar } from "./components/Navbar";
 import { HomeCard } from "./components/HomeCard";
@@ -23,6 +26,19 @@ function App() {
   const [profileComplete, setProfileComplete] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+
+  // Both verification models would otherwise download at the verification step
+  // itself -- the least forgiving moment in onboarding. The funnel is
+  // Landing -> ProfileSetup -> Verify, so starting here buys the whole profile
+  // step to warm them. Both are idempotent and swallow their own errors, so a
+  // failure of either still leaves the flow working.
+  useEffect(() => {
+    if (!showLanding) {
+      void preloadFaceFraming();
+      void loadGenderClassifier().catch(() => {});
+    }
+  }, [showLanding]);
 
   const handleVerified = async () => {
     await refreshSession();
@@ -67,9 +83,12 @@ function App() {
     );
   }
 
+  // Ordered so the age declaration comes before anything else asks for a
+  // camera or a persona.
+  const needsAge = !ageConfirmed && !session.ageConfirmed;
   const needsProfile =
     editingProfile || (!profileComplete && (!session.nickname || session.nickname === "Anonymous"));
-  const needsVerify = !needsProfile && !verified && !session.isVerified;
+  const needsVerify = !needsAge && !needsProfile && !verified && !session.isVerified;
   const inChat = status === "matched" && !!roomId;
 
   const goHome = () => {
@@ -97,7 +116,16 @@ function App() {
           inChat ? "max-w-2xl" : "max-w-md"
         }`}
       >
-        {needsProfile ? (
+        {needsAge ? (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <AgeGate
+              onConfirmed={async () => {
+                await refreshSession();
+                setAgeConfirmed(true);
+              }}
+            />
+          </div>
+        ) : needsProfile ? (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-400">
             {!editingProfile && <OnboardingSteps current={0} />}
             <Suspense fallback={<CardSkeleton />}>

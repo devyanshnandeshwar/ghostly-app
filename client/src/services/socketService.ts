@@ -22,13 +22,13 @@ class SocketService {
             reconnectionAttempts: 5
         });
 
-        this.socket.on("connect", () => {
-            // console.log("[SocketService] Connected:", this.socket?.id);
-        });
-
-        this.socket.on("connect_error", (_err) => {
-            // console.error("[SocketService] Connection Error:", err);
-        });
+        // Swallowed on purpose per attempt -- socket.io retries on its own and
+        // a log line per attempt is noise. What is NOT handled is the terminal
+        // case: after reconnectionAttempts the socket gives up permanently and
+        // nothing tells the user. SocketContext exposes isConnected, but no
+        // component reads it yet, so a user on a network that blocks WebSockets
+        // sees an app that simply never does anything. Tracked as GH-24.
+        this.socket.on("connect_error", () => {});
 
         return this.socket;
     }

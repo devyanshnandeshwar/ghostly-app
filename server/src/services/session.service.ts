@@ -40,6 +40,8 @@ export interface QueueSessionView {
     isVerified: boolean;
     /** Gates matchmaking. Must be cached, or a ban lags by a full cache TTL. */
     status: string;
+    /** Whether the age declaration has been made. Also gates matchmaking. */
+    ageConfirmed: boolean;
     gender: string | null;
     preference: string;
     nickname: string | null;
@@ -65,6 +67,7 @@ export async function getQueueSessionView(sessionId: string): Promise<QueueSessi
         _id: session._id.toString(),
         isVerified: session.isVerified ?? false,
         status: (session as any).status ?? "active",
+        ageConfirmed: Boolean((session as any).ageConfirmedAt),
         gender: session.gender ?? null,
         preference: session.preference ?? "any",
         nickname: session.nickname ?? null,
@@ -87,6 +90,7 @@ export async function invalidateSessionCache(sessionId: string) {
 const CACHED_FIELDS = new Set<keyof QueueSessionView | string>([
     "isVerified",
     "status",
+    "ageConfirmedAt",
     "gender",
     "preference",
     "nickname",

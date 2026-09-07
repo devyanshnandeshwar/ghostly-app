@@ -80,7 +80,7 @@ function ChatPreview() {
               <p className="text-sm font-medium leading-tight">Stranger</p>
               <p className="flex items-center gap-1.5 text-xs leading-tight text-success">
                 <ShieldCheck className="size-3" />
-                End-to-end encrypted
+                Encrypted in transit
               </p>
             </div>
           </div>
