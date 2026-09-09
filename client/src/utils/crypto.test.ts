@@ -51,7 +51,7 @@ describe("key agreement", () => {
 
         const { ciphertext, iv } = await encryptMessage("secret", aliceShared);
 
-        expect(await decryptMessage(ciphertext, iv, eveShared)).not.toBe("secret");
+        expect(await decryptMessage(ciphertext, iv, eveShared)).toBeNull();
     });
 
     test("the exported public key carries no private component", async () => {
@@ -123,7 +123,7 @@ describe("message encryption", () => {
         bytes[0] = String.fromCharCode(bytes[0].charCodeAt(0) ^ 0xff);
         const tampered = btoa(bytes.join(""));
 
-        expect(await decryptMessage(tampered, iv, bobShared)).not.toBe("hello");
+        expect(await decryptMessage(tampered, iv, bobShared)).toBeNull();
     });
 
     test("a swapped IV does not decrypt", async () => {
@@ -131,6 +131,51 @@ describe("message encryption", () => {
         const a = await encryptMessage("hello", aliceShared);
         const b = await encryptMessage("world", aliceShared);
 
-        expect(await decryptMessage(a.ciphertext, b.iv, bobShared)).not.toBe("hello");
+        expect(await decryptMessage(a.ciphertext, b.iv, bobShared)).toBeNull();
+    });
+});
+
+// The regression this guards: decryptMessage used to return
+// "⚠️ Decryption Failed: " + err.message, which useChatHook pushed into the
+// transcript as sender: "partner" and rendered in an ordinary chat bubble. A
+// failure was indistinguishable from something the other person typed, it leaked
+// a raw DOMException message into the UI, and it made the caller's try/catch
+// dead code because nothing ever threw. Null cannot be mistaken for text.
+describe("a failure is reported as a failure", () => {
+    test("returns null rather than a string that looks like a message", async () => {
+        const { aliceShared, bobShared } = await handshake();
+        const { iv } = await encryptMessage("hello", aliceShared);
+
+        const result = await decryptMessage("bm90LWNpcGhlcnRleHQ=", iv, bobShared);
+
+        expect(result).toBeNull();
+    });
+
+    test.each([
+        ["ciphertext that is not base64 at all", "!!!not base64!!!", "aXZpdml2aXY="],
+        ["an IV that is not base64", "AAAAAAAAAAAAAAAAAAAA", "!!!"],
+        ["an empty ciphertext", "", "aXZpdml2aXY="],
+        ["a truncated IV", "AAAAAAAAAAAAAAAAAAAA", "AA=="]
+    ])("returns null for %s", async (_label, ciphertext, iv) => {
+        const { bobShared } = await handshake();
+
+        expect(await decryptMessage(ciphertext, iv, bobShared)).toBeNull();
+    });
+
+    // Nothing renderable may come back from a failure: a string here is a
+    // string the chat would show in a bubble attributed to the partner.
+    test("never returns something a chat bubble could render", async () => {
+        const { bobShared } = await handshake();
+
+        for (const [ciphertext, iv] of [
+            ["!!!", "!!!"],
+            ["AAAA", "AAAA"],
+            ["", ""]
+        ]) {
+            const result = await decryptMessage(ciphertext, iv, bobShared);
+
+            expect(result).toBeNull();
+            expect(typeof result).not.toBe("string");
+        }
     });
 });

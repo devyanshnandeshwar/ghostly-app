@@ -26,12 +26,28 @@ const DESCRIPTION_LIMIT = 200;
 export default function ReportModal({ isOpen, onClose, onSubmit }: ReportModalProps) {
   const [reason, setReason] = useState(REASONS[0]);
   const [description, setDescription] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Radix unmounts DialogContent's children, but this component stays mounted,
+  // so its state survived every close. Report someone for Harassment with a
+  // note, skip to the next stranger, open Report again -- and the form was
+  // pre-filled with what you wrote about the previous person, one click from
+  // being sent about someone it does not describe.
+  //
+  // Reset during render via React's documented "adjusting state when a prop
+  // changes" pattern, the same one useCountdown uses. An effect would paint the
+  // stale values once before clearing them.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) {
+      setReason(REASONS[0]);
+      setDescription("");
+    }
+  }
 
   const handleSubmit = () => {
-    setIsSubmitting(true);
     onSubmit(reason, description);
-    setIsSubmitting(false);
   };
 
   return (
@@ -85,11 +101,11 @@ export default function ReportModal({ isOpen, onClose, onSubmit }: ReportModalPr
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? "Sending" : "Send report"}
+          <Button variant="destructive" onClick={handleSubmit}>
+            Send report
           </Button>
         </DialogFooter>
       </DialogContent>

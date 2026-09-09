@@ -10,10 +10,15 @@ import { useState, useEffect } from 'react';
  * the number shown is now the number actually enforced -- and it no longer
  * depends on the viewer's timezone agreeing with the server's.
  */
-const formatRemaining = (msRemaining: number): string => {
+export const formatRemaining = (msRemaining: number): string => {
     if (msRemaining <= 0) return "";
 
-    const total = Math.floor(msRemaining / 1000);
+    // Ceil, not floor. The initial value is seeded from the raw figure the
+    // server sent -- floor(10000/1000) = 10 -- while the first interval tick
+    // lands a millisecond or so late and sees 8999ms, which floors to 8. The
+    // countdown visibly skipped a second on every mount and every re-prime:
+    // 10, 8, 7. Rounding up means a partial second still reads as that second.
+    const total = Math.ceil(msRemaining / 1000);
     const hours = Math.floor(total / 3600);
     const minutes = Math.floor((total % 3600) / 60);
     const seconds = total % 60;

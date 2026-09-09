@@ -86,12 +86,26 @@ export async function encryptMessage(
     };
 }
 
-// Decrypt Message (AES-GCM)
+/**
+ * Decrypts a relayed message, or returns null if it cannot.
+ *
+ * Null, not a string. This used to return
+ *
+ *     "⚠️ Decryption Failed: " + err.message
+ *
+ * which the caller pushed into the transcript as `sender: "partner"` and
+ * rendered in an ordinary chat bubble. A failure was therefore indistinguishable
+ * from something the other person actually typed -- and it leaked a raw
+ * DOMException message into the UI. It also made the caller's try/catch dead
+ * code, because nothing ever threw.
+ *
+ * A separate value lets the caller decide, and it cannot be mistaken for text.
+ */
 export async function decryptMessage(
     ciphertext: string,
     iv: string,
     key: CryptoKey
-): Promise<string> {
+): Promise<string | null> {
     try {
         const encryptedData = base64ToArrayBuffer(ciphertext);
         const ivData = base64ToArrayBuffer(iv);
@@ -109,8 +123,8 @@ export async function decryptMessage(
 
         const decoder = new TextDecoder();
         return decoder.decode(decryptedBuffer);
-    } catch (err) {
-        return "⚠️ Decryption Failed: " + (err instanceof Error ? err.message : "Key Mismatch");
+    } catch {
+        return null;
     }
 }
 

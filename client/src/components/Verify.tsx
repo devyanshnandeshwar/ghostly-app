@@ -4,7 +4,8 @@ import { AlertCircle, Camera, CheckCircle2, Loader2, ScanFace } from "lucide-rea
 import api from "../services/client";
 import { FRAMING_HINTS, useFaceFraming } from "../hooks/useFaceFraming";
 import { classifyGender } from "../lib/genderClassifier";
-import { apiErrorMessage, errorText } from "../lib/apiError";
+import { apiErrorMessage } from "../lib/apiError";
+import { cameraErrorMessage } from "../lib/cameraError";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -70,18 +71,12 @@ export function Verify({ onVerified }: VerifyProps) {
       }
     } catch (err) {
       console.error("[Verify] Camera error:", err);
-      const errorMsg = errorText(err, "Unknown error");
-
-      if (errorMsg.includes("Permission")) {
-        setError({
-          kind: "camera",
-          message: "Camera access was blocked. Allow it from the icon in your address bar, then try again.",
-        });
-      } else if (errorMsg.includes("NotFound") || errorMsg.includes("DeviceNotFound")) {
-        setError({ kind: "camera", message: "No camera was found on this device." });
-      } else {
-        setError({ kind: "camera", message: errorMsg });
-      }
+      // Branch on err.name, never on err.message. The message is human prose
+      // that varies by browser and locale: Chrome's no-camera message is
+      // "Requested device not found" and Firefox's denial is "The request is
+      // not allowed by the user agent", so the substring tests that used to
+      // live here matched neither, on either browser.
+      setError({ kind: "camera", message: cameraErrorMessage(err) });
     } finally {
       setLoading(false);
     }

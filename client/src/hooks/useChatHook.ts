@@ -6,7 +6,10 @@ export function useChat(roomId: string | null) {
     const { socket } = useSocket();
     // "system" covers room events (a partner leaving), which must not be drawn
     // as if the partner had typed them.
-    const [messages, setMessages] = useState<{ text: string, sender: "me" | "partner" | "system" }[]>([]);
+    /** `failed` marks a message that arrived but could not be decrypted. */
+    const [messages, setMessages] = useState<
+        { text: string; sender: "me" | "partner" | "system"; failed?: boolean }[]
+    >([]);
     const [input, setInput] = useState("");
     const [isPartnerTyping, setIsPartnerTyping] = useState(false);
     const [isEncrypted, setIsEncrypted] = useState(false);
@@ -115,12 +118,20 @@ export function useChat(roomId: string | null) {
         if (!socket || !sharedKey) return;
 
         const handleMessage = async (data: { message: string, iv: string }) => {
-            try {
-                const text = await decryptMessage(data.message, data.iv, sharedKey);
-                setMessages(prev => [...prev, { text, sender: "partner" }]);
-            } catch (err) {
-                console.error("[E2EE] Decrypt error:", err);
+            const text = await decryptMessage(data.message, data.iv, sharedKey);
+
+            // Null means it did not decrypt. Rendering the failure as partner
+            // text -- which is what happened while decryptMessage returned its
+            // own error string -- puts words in the other person's mouth and
+            // leaks a DOMException message into the transcript. Mark it as what
+            // it is instead, so the UI can show a gap rather than a lie.
+            if (text === null) {
+                console.error("[E2EE] Could not decrypt a message from the partner");
+                setMessages(prev => [...prev, { text: "", sender: "partner", failed: true }]);
+                return;
             }
+
+            setMessages(prev => [...prev, { text, sender: "partner" }]);
         };
 
         socket.on("receive-message", handleMessage);

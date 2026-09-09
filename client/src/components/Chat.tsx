@@ -29,11 +29,23 @@ export default function Chat({ roomId, partner }: ChatProps) {
     }
   }, [messages, isPartnerTyping]);
 
+  // Held so it can be cleared. This is not an edge case: a successful report
+  // makes the server emit queue-error, which sends MatchContext to "idle" and
+  // unmounts Chat -- always inside these 2.6 seconds.
+  const reportedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (reportedTimer.current) clearTimeout(reportedTimer.current);
+    };
+  }, []);
+
   const handleReportSubmit = (reason: string, description: string) => {
     reportUser(reason, description);
     setIsReportModalOpen(false);
     setReported(true);
-    setTimeout(() => setReported(false), 2600);
+    if (reportedTimer.current) clearTimeout(reportedTimer.current);
+    reportedTimer.current = setTimeout(() => setReported(false), 2600);
   };
 
   return (
@@ -147,6 +159,21 @@ export default function Chat({ roomId, partner }: ChatProps) {
                     className="my-2 text-center text-xs text-muted-foreground"
                   >
                     {msg.text}
+                  </p>
+                );
+              }
+
+              // A message that arrived but would not decrypt. Shown as a gap
+              // rather than as text: rendering it in an ordinary bubble, which
+              // is what happened while decryptMessage returned its own error
+              // string, puts words in the other person's mouth.
+              if (msg.failed) {
+                return (
+                  <p
+                    key={i}
+                    className="my-2 text-center text-xs italic text-muted-foreground"
+                  >
+                    A message could not be decrypted.
                   </p>
                 );
               }
