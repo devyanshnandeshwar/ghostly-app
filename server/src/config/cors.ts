@@ -33,3 +33,53 @@ export function buildCorsOrigins(clientUrl: string, nodeEnv: string): string[] {
 
     return origins.filter((origin, i, arr) => arr.indexOf(origin) === i);
 }
+
+/**
+ * Refuses to boot production with a client origin that is not one.
+ *
+ * buildCorsOrigins strips the hardcoded LOCAL_DEV_ORIGINS in production, but it
+ * cannot tell that the *configured* origin is itself localhost -- and env.ts
+ * defaults CLIENT_URL to http://localhost:5173. So a production deploy that
+ * simply forgot to set CLIENT_URL got exactly the hole the docblock above says
+ * was closed: localhost allowed, with credentials: true.
+ *
+ * Same shape as assertUsableSessionSecret, and for the same reason: a
+ * misconfiguration that silently weakens security is worth a refusal to start,
+ * because nothing downstream will ever report it.
+ */
+// Anchored on the whole host, with an optional port. A prefix match would
+// reject localhost-app.example.com, which is a perfectly ordinary public host.
+const NON_PUBLIC_HOSTS =
+    /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0|\[::1\])(:\d+)?$/i;
+
+export function assertUsableClientUrl(clientUrl: string, nodeEnv: string): void {
+    if (nodeEnv !== "production") return;
+
+    const configured = clientUrl
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+
+    if (configured.length === 0) {
+        throw new Error(
+            "CLIENT_URL must be set in production. It is the only origin allowed to " +
+                "make credentialed cross-origin calls; unset, it defaults to localhost."
+        );
+    }
+
+    for (const origin of configured) {
+        let host: string;
+        try {
+            host = new URL(origin).host;
+        } catch {
+            throw new Error(`CLIENT_URL contains an entry that is not a valid origin: ${origin}`);
+        }
+
+        if (NON_PUBLIC_HOSTS.test(host)) {
+            throw new Error(
+                `CLIENT_URL must not name a local address in production: ${origin}. ` +
+                    "A page on the victim's own machine would be an allowed origin."
+            );
+        }
+    }
+}

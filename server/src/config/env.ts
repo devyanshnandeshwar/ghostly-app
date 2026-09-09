@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-import { buildCorsOrigins } from "./cors";
+import { buildCorsOrigins, assertUsableClientUrl } from "./cors";
 import { assertUsableSessionSecret } from "./sessionSecret";
 
 // Load .env file
@@ -17,6 +17,36 @@ const clientUrl = process.env.CLIENT_URL || defaultClientUrl;
 
 const DEV_SESSION_SECRET = "supersecret";
 
+/**
+ * Reads a numeric env var, refusing values that are not numbers.
+ *
+ * The two call sites below used to be bare Number() calls, and both failed
+ * silently and dangerously:
+ *
+ *   MIN_VERIFY_CONFIDENCE=high  ->  NaN, and `score < NaN` is false for every
+ *   score, so every verification passed the confidence gate with no error and
+ *   no log. The gate was off and nothing said so.
+ *
+ *   REPORT_RETENTION_DAYS=abc   ->  NaN, so the `> 0` test in models/Report.ts
+ *   was false, the TTL index was never declared, and abuse reports accumulated
+ *   forever.
+ *
+ * They also disagreed on operator. `||` rewrote a legitimate 0 to the default;
+ * `??` turned an empty string into 0, which for retention means "keep forever".
+ * A value that is present but unusable is a configuration error, not a reason
+ * to guess.
+ */
+export function parseNumberEnv(raw: string | undefined, fallback: number, name: string): number {
+    if (raw === undefined || raw.trim() === "") return fallback;
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+        throw new Error(`${name} must be a number, got ${JSON.stringify(raw)}`);
+    }
+
+    return parsed;
+}
+
 const nodeEnv = process.env.NODE_ENV || "development";
 
 export const config = {
@@ -31,11 +61,19 @@ export const config = {
     // No default: admin routes fail closed when this is unset.
     ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
     // Minimum model confidence required to mark a session as verified.
-    MIN_VERIFY_CONFIDENCE: Number(process.env.MIN_VERIFY_CONFIDENCE || 0.85),
+    MIN_VERIFY_CONFIDENCE: parseNumberEnv(
+        process.env.MIN_VERIFY_CONFIDENCE,
+        0.85,
+        "MIN_VERIFY_CONFIDENCE"
+    ),
     // Abuse reports are kept this long, then expire via a TTL index. Sessions
     // already expire after 30 days, so a report far older than that refers to
     // accounts that no longer exist. Set to 0 to keep reports forever.
-    REPORT_RETENTION_DAYS: Number(process.env.REPORT_RETENTION_DAYS ?? 365)
+    REPORT_RETENTION_DAYS: parseNumberEnv(
+        process.env.REPORT_RETENTION_DAYS,
+        365,
+        "REPORT_RETENTION_DAYS"
+    )
 };
 
 // Validate essential env vars
@@ -52,3 +90,7 @@ if (missingVars.length > 0) {
 // version that lived here compared against a single literal and missed the
 // placeholder .env.example actually ships.
 assertUsableSessionSecret(config.SESSION_SECRET, config.NODE_ENV);
+
+// CLIENT_URL decides who may make credentialed cross-origin calls, and it
+// defaults to localhost. Unset in production that is a hole, not a default.
+assertUsableClientUrl(config.CLIENT_URL, config.NODE_ENV);

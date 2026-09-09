@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildCorsOrigins } from "./cors";
+import { buildCorsOrigins, assertUsableClientUrl } from "./cors";
 
 // The regression this guards: the localhost entries were unconditional, so a
 // page a victim runs on their own machine on :3000 or :5173 could make
@@ -74,5 +74,77 @@ describe("buildCorsOrigins across a split deployment", () => {
 
         expect(origins).toContain("https://preview.vercel.app");
         expect(origins).toContain("http://localhost:5173");
+    });
+});
+
+// The regression these guard: buildCorsOrigins strips the hardcoded dev origins
+// in production, but it cannot tell that the CONFIGURED origin is itself
+// localhost -- and env.ts defaults CLIENT_URL to http://localhost:5173. So a
+// production deploy that simply forgot to set CLIENT_URL served
+// CORS_ORIGINS = ["http://localhost:5173"] with credentials: true: exactly the
+// hole the file's own docblock says was closed.
+//
+// The suite above never caught it because every case passes an explicit,
+// non-localhost origin -- it only ever tested the path where someone remembered.
+describe("assertUsableClientUrl", () => {
+    test("accepts a real origin in production", () => {
+        expect(() =>
+            assertUsableClientUrl("https://ghostly.dev", "production")
+        ).not.toThrow();
+    });
+
+    test("accepts a comma-separated list of real origins", () => {
+        expect(() =>
+            assertUsableClientUrl("https://ghostly.vercel.app, https://ghostly.dev", "production")
+        ).not.toThrow();
+    });
+
+    // The actual bug: this is the value CLIENT_URL takes when nobody sets it.
+    test("refuses the localhost value an unset CLIENT_URL falls back to", () => {
+        expect(() =>
+            assertUsableClientUrl("http://localhost:5173", "production")
+        ).toThrow(/CLIENT_URL/);
+    });
+
+    test.each([
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://0.0.0.0:8080",
+        "http://[::1]:5173"
+    ])("refuses the local address %s", (origin) => {
+        expect(() => assertUsableClientUrl(origin, "production")).toThrow();
+    });
+
+    test("refuses a list where only one entry is local", () => {
+        expect(() =>
+            assertUsableClientUrl("https://ghostly.dev,http://localhost:5173", "production")
+        ).toThrow();
+    });
+
+    test("refuses an empty configuration rather than allowing nothing quietly", () => {
+        expect(() => assertUsableClientUrl("", "production")).toThrow(/CLIENT_URL/);
+        expect(() => assertUsableClientUrl("  ,  ", "production")).toThrow(/CLIENT_URL/);
+    });
+
+    test("refuses a value that is not an origin at all", () => {
+        expect(() => assertUsableClientUrl("ghostly.dev", "production")).toThrow();
+    });
+
+    test("says what to do, naming the variable", () => {
+        expect(() => assertUsableClientUrl("http://localhost:5173", "production")).toThrow(
+            /CLIENT_URL/
+        );
+    });
+
+    // A hostname that merely starts with the same letters is not a local one.
+    test("does not mistake a public host for a local one", () => {
+        expect(() =>
+            assertUsableClientUrl("https://localhost-app.example.com", "production")
+        ).not.toThrow();
+    });
+
+    test("leaves development alone, where localhost is the point", () => {
+        expect(() => assertUsableClientUrl("http://localhost:5173", "development")).not.toThrow();
+        expect(() => assertUsableClientUrl("", "test")).not.toThrow();
     });
 });
