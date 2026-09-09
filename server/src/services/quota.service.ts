@@ -80,9 +80,44 @@ export async function hasFilterQuota(sessionId: string): Promise<boolean> {
 export async function consumeFilter(sessionId: string): Promise<void> {
     const key = usageKey(sessionId);
 
-    const count = await redisClient.incr(key);
+    try {
+        // Create the key WITH its expiry, then increment. The previous order --
+        // INCR, then EXPIRE only when the count came back as 1 -- left a window
+        // in which the key existed with no TTL at all. Lose that EXPIRE (a
+        // dropped connection, a process restart, an Upstash hiccup) and the key
+        // never expires; once it reaches the allowance, hasFilterQuota is false
+        // forever and nothing in the codebase resets it. getFilterUsage then
+        // maps ttl === -1 to resetInSeconds: 0, so the UI cheerfully reports
+        // "0s until reset" for the rest of the account's life.
+        //
+        // socketManager's connect limiter already documents this exact failure
+        // and re-applies its TTL on every increment. That trick would turn this
+        // fixed window into a sliding one, so quota seeds the key instead.
+        // NX means a window already running is left alone.
+        const created = await redisClient.set(key, "0", {
+            NX: true,
+            EX: FILTER_WINDOW_SECONDS
+        });
 
-    if (count === 1) {
-        await redisClient.expire(key, FILTER_WINDOW_SECONDS);
+        await redisClient.incr(key);
+
+        if (!created) {
+            // A key we did not just create might be one the old implementation
+            // stranded. Repair it rather than leave the session locked out.
+            const ttl = await redisClient.ttl(key);
+            if (ttl === -1) {
+                await redisClient.expire(key, FILTER_WINDOW_SECONDS);
+            }
+        }
+    } catch (error: any) {
+        // Never fail a match that has already been announced. By the time this
+        // runs, both clients have been sent "matched" and joined to the room;
+        // throwing here unwound to the join-queue catch, which emitted
+        // queue-error to the joiner alone -- so one side returned to idle while
+        // the other sat in a chat with a partner who had silently left, and no
+        // partner-left was ever sent. An unmetered filter is the cheaper
+        // failure, and matches the generous degradation getFilterUsage above
+        // already documents.
+        logger.warn(`Filter consume failed: ${error.message}`);
     }
 }

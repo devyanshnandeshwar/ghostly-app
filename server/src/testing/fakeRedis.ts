@@ -3,19 +3,48 @@
  *
  * Time is virtual: call advance() instead of sleeping, so TTL behaviour is
  * deterministic and a test that cares about expiry costs no wall-clock time.
+ *
+ * Individual commands can be made to fail with failCommand(). Several places in
+ * src/ document a deliberate behaviour when Redis is unreachable -- quota reads
+ * degrade to zero use, the lastActive throttle gives up -- and none of it could
+ * be tested while every command always succeeded. A dropped EXPIRE in
+ * particular is what used to strand a quota key with no expiry at all.
  */
 
 type Entry = { value: string | string[]; expiresAt: number | null };
 
 export class FakeRedis {
     private store = new Map<string, Entry>();
+    private failing = new Set<string>();
     now = 0;
     isOpen = true;
 
     reset() {
         this.store.clear();
+        this.failing.clear();
         this.now = 0;
         this.isOpen = true;
+    }
+
+    /** Make one command reject, the way a client does when the link drops. */
+    failCommand(name: string) {
+        this.failing.add(name);
+    }
+
+    /** Let a previously failing command work again. */
+    healCommand(name: string) {
+        this.failing.delete(name);
+    }
+
+    private guard(name: string) {
+        if (this.failing.has(name)) {
+            throw new Error(`ECONNRESET: ${name} failed`);
+        }
+    }
+
+    /** Direct store access, for setting up states a normal call cannot reach. */
+    seed(key: string, value: string, expiresAt: number | null = null) {
+        this.store.set(key, { value, expiresAt });
     }
 
     advance(ms: number) {
@@ -40,10 +69,12 @@ export class FakeRedis {
     }
 
     async get(key: string) {
+        this.guard("get");
         return this.str(key);
     }
 
     async set(key: string, value: string, opts?: { NX?: boolean; EX?: number }) {
+        this.guard("set");
         if (opts?.NX && this.live(key) !== undefined) return null;
         this.store.set(key, {
             value: String(value),
@@ -53,17 +84,20 @@ export class FakeRedis {
     }
 
     async setEx(key: string, seconds: number, value: string) {
+        this.guard("setEx");
         this.store.set(key, { value: String(value), expiresAt: this.now + seconds * 1000 });
         return "OK";
     }
 
     async del(key: string) {
+        this.guard("del");
         if (this.live(key) === undefined) return 0;
         this.store.delete(key);
         return 1;
     }
 
     async incr(key: string) {
+        this.guard("incr");
         const current = this.str(key);
         const next = (current === null ? 0 : parseInt(current, 10)) + 1;
         const existing = this.live(key);
@@ -72,6 +106,7 @@ export class FakeRedis {
     }
 
     async expire(key: string, seconds: number) {
+        this.guard("expire");
         const entry = this.live(key);
         if (!entry) return 0;
         entry.expiresAt = this.now + seconds * 1000;
@@ -79,6 +114,7 @@ export class FakeRedis {
     }
 
     async ttl(key: string) {
+        this.guard("ttl");
         const entry = this.live(key);
         if (!entry) return -2; // no such key
         if (entry.expiresAt === null) return -1; // no expiry

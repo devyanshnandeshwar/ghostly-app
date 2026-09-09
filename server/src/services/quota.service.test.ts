@@ -111,3 +111,92 @@ describe("hasFilterQuota", () => {
         });
     });
 });
+
+// The regression these guard: consumeFilter used to INCR and then EXPIRE only
+// when the count came back as 1, leaving a window in which the key existed with
+// no TTL at all. Lose that EXPIRE -- a dropped connection, a restart, an Upstash
+// hiccup -- and the key never expires. Once it reaches the allowance,
+// hasFilterQuota is false forever and nothing in the codebase resets it, while
+// getFilterUsage maps ttl === -1 to resetInSeconds: 0, so the UI reports "0s
+// until reset" for the rest of the account's life.
+//
+// None of this could be tested before: FakeRedis had no way to make a command
+// fail, so the failure paths src/ documents were unreachable from a test.
+describe("consumeFilter when Redis misbehaves", () => {
+    test("the key carries an expiry from the very first use", async () => {
+        await consumeFilter("sess-ttl");
+
+        expect(await redis.ttl("daily_usage:sess-ttl")).toBe(FILTER_WINDOW_SECONDS);
+    });
+
+    // The exact failure: the expiry is set up front, so losing a later command
+    // cannot strand the key.
+    test("a dropped EXPIRE cannot strand the key without a TTL", async () => {
+        redis.failCommand("expire");
+
+        await consumeFilter("sess-1");
+        redis.healCommand("expire");
+
+        expect(await redis.ttl("daily_usage:sess-1")).toBeGreaterThan(0);
+    });
+
+    test("the allowance still comes back after a dropped EXPIRE", async () => {
+        redis.failCommand("expire");
+        for (let i = 0; i < FREE_FILTERS_PER_DAY; i++) await consumeFilter("sess-1");
+        redis.healCommand("expire");
+        expect(await hasFilterQuota("sess-1")).toBe(false);
+
+        redis.advance(FILTER_WINDOW_SECONDS * 1000 + 1);
+
+        expect(await hasFilterQuota("sess-1")).toBe(true);
+    });
+
+    // Keys the shipped bug already stranded are healed rather than left to lock
+    // those accounts out permanently.
+    test("repairs a key an earlier version left with no expiry", async () => {
+        redis.seed("daily_usage:legacy", "5", null); // no TTL, allowance spent
+        expect(await hasFilterQuota("legacy")).toBe(false);
+
+        await consumeFilter("legacy");
+
+        expect(await redis.ttl("daily_usage:legacy")).toBe(FILTER_WINDOW_SECONDS);
+        redis.advance(FILTER_WINDOW_SECONDS * 1000 + 1);
+        expect(await hasFilterQuota("legacy")).toBe(true);
+    });
+
+    test("a running window is not restarted by a later use", async () => {
+        await consumeFilter("sess-1");
+        redis.advance(60 * 60 * 1000);
+        await consumeFilter("sess-1");
+
+        expect(await redis.ttl("daily_usage:sess-1")).toBe(FILTER_WINDOW_SECONDS - 3600);
+    });
+
+    // By the time consumeFilter runs, both clients have been sent "matched" and
+    // joined to the room. Throwing here unwound to the join-queue catch, which
+    // emitted queue-error to the joiner alone -- so one side returned to idle
+    // while the other sat in a chat with a partner who had silently left.
+    test("a total Redis failure does not abort a match already announced", async () => {
+        redis.failCommand("incr");
+        redis.failCommand("set");
+
+        expect(consumeFilter("sess-1")).resolves.toBeUndefined();
+    });
+
+    test("a quota read failure reports a full allowance rather than blocking", async () => {
+        redis.failCommand("get");
+
+        expect(await getFilterUsage("sess-1")).toEqual({
+            used: 0,
+            remaining: FREE_FILTERS_PER_DAY,
+            total: FREE_FILTERS_PER_DAY,
+            resetInSeconds: 0
+        });
+    });
+
+    test("matchmaking is never blocked by a quota read failure", async () => {
+        redis.failCommand("get");
+
+        expect(await hasFilterQuota("sess-1")).toBe(true);
+    });
+});
