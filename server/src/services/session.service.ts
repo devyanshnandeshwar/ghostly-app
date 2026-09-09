@@ -5,6 +5,8 @@ import { logger } from "../utils/logger";
 import { redisClient } from "../config/redis";
 import { UNVERIFIED_SESSION_TTL_SECONDS } from "../config/limits";
 import { TtlCache } from "./ttlCache";
+// Pure, and extracted so it can be tested without the model or the Redis client.
+import { touchesCachedField } from "./cachedFields";
 
 /**
  * Creates a brand new session with a server-generated identifier.
@@ -132,38 +134,6 @@ export async function getQueueSessionView(sessionId: string): Promise<QueueSessi
 /** Call whenever the cached fields change, so the next read is fresh. */
 export async function invalidateSessionCache(sessionId: string) {
     sessionViews.delete(sessionId);
-}
-
-// Exactly the fields mirrored into QueueSessionView above. Keep the two in step:
-// a field cached but missing here would go stale, silently.
-const CACHED_FIELDS = new Set<keyof QueueSessionView | string>([
-    "isVerified",
-    "status",
-    "ageConfirmedAt",
-    "gender",
-    "preference",
-    "nickname",
-    "bio",
-    "pastMatches"
-]);
-
-/** True if an update writes any field the cached view mirrors. */
-export function touchesCachedField(update: UpdateQuery<any>): boolean {
-    const hits = (field: string) => CACHED_FIELDS.has(field.split(".")[0]);
-
-    for (const [key, value] of Object.entries(update)) {
-        // Operators ($set, $inc, $addToSet, ...) nest the real field names.
-        if (key.startsWith("$")) {
-            if (value && typeof value === "object" && Object.keys(value).some(hits)) {
-                return true;
-            }
-            continue;
-        }
-
-        if (hits(key)) return true;
-    }
-
-    return false;
 }
 
 /**

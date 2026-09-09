@@ -1,24 +1,18 @@
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 // touchesCachedField decides whether a write invalidates the cached queue view,
 // and its own comment warns that "a field cached but missing here would go
 // stale, silently". It is pure -- an update object in, a boolean out -- and it
-// had no tests, because it was not exported.
+// had no tests, because it was not exported -- and reaching it through
+// session.service meant mocking the mongoose model and the Redis client to test
+// a function that needs neither. It now lives in its own module, the same seam
+// cors.ts and sessionSecret.ts already use.
 //
 // What it protects: a ban that does not invalidate leaves the account matchable
 // for a full cache TTL, and a pastMatches write that does not invalidate pairs
 // two people who have just been together straight back up. Both fail silently.
 
-mock.module("../models/UserSession", () => ({ UserSession: {} }));
-mock.module("../config/redis", () => ({
-    redisClient: {},
-    redisReady: Promise.resolve(),
-    connectRedis: async () => {}
-}));
-
-// A static import is safe: mock.module patches the live binding even for a
-// module already resolved.
-import { touchesCachedField } from "./session.service";
+import { touchesCachedField } from "./cachedFields";
 
 describe("updates that must invalidate the cached view", () => {
     test.each([
