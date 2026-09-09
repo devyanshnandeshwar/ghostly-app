@@ -12,6 +12,17 @@ import { safeHandler } from "./safeHandler";
 export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
     socket.on("join-queue", safeHandler("join-queue", async () => {
          try {
+            // Already in a conversation. Without this, joining again pairs the
+            // caller with a second stranger and the setActiveMatch below
+            // overwrites the first partner's presence -- so that partner's
+            // messages start being dropped by the room check and they are never
+            // told the chat ended. This is the non-racy form of the stranded
+            // queue entry fixed in match.service.
+            if (await getActiveMatch(socket.id)) {
+                socket.emit("queue-error", "You are already in a chat.");
+                return;
+            }
+
             const session = socket.data.session;
             // Redis-cached view: joining the queue no longer costs a Mongo read.
             const currentSession = await getQueueSessionView(session._id.toString());
