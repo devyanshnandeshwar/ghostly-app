@@ -164,7 +164,12 @@ async function handleLeaveChat(io: Server, socket: SessionSocket, isNext: boolea
         }
     }
 
-    if (isNext) {
+    // Inside the activeMatch check, not beside it. A client emitting next-match
+    // while idle or merely queued used to earn a 5-second block on its next
+    // join-queue for skipping a conversation it was never in -- and, because
+    // this path never leaves the queue, it could still be matched during the
+    // cooldown it had just been told about.
+    if (isNext && activeMatch) {
         const session = socket.data.session;
         if (session) {
             // _id, not sessionId: sessionId is a QueueUser field and is

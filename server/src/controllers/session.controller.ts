@@ -7,7 +7,10 @@ import { getFilterUsage } from "../services/quota.service";
 
 export const init = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { token } = req.body;
+        // body-parser 2.x no longer defaults req.body to {}: a request with no
+        // body, or one with a non-JSON content type, leaves it undefined, and
+        // destructuring that answered 500 where a fresh session was correct.
+        const { token } = req.body ?? {};
 
         // Resume an existing session only when the caller presents a token we
         // signed. Anything else starts a fresh session.

@@ -1,5 +1,8 @@
-import { UserSession } from "../models/UserSession";
 import { updateSession } from "./session.service";
+
+// Deliberately no mongoose import here. The UserSession model was imported and
+// never used, which dragged the whole driver into any test of this file -- and
+// this is nine branches of pure validation that badly wanted testing.
 
 interface ProfileData {
     nickname: string;
@@ -8,7 +11,7 @@ interface ProfileData {
 }
 
 export const updateProfile = async (sessionId: string, data: ProfileData) => {
-    const { nickname, bio, preference } = data;
+    const { nickname, bio, preference } = data ?? ({} as ProfileData);
 
     // Validation
     if (!nickname || typeof nickname !== "string" || nickname.length < 3 || nickname.length > 20) {
@@ -58,12 +61,16 @@ export const updateProfile = async (sessionId: string, data: ProfileData) => {
         throw err;
     }
 
+    // Only write what the caller actually sent. Defaulting the absent fields
+    // meant a request carrying just a nickname reset the gender filter to "any"
+    // and blanked the bio -- silently discarding the setting the filter quota
+    // exists to meter, on an update that never mentioned it.
+    const update: Record<string, unknown> = { nickname };
+    if (bio !== undefined) update.bio = bio;
+    if (preference !== undefined) update.preference = preference;
+
     // Invalidates the cached view as part of the write.
-    await updateSession(sessionId, {
-        nickname,
-        bio: bio || "",
-        preference: preference || "any"
-    });
+    await updateSession(sessionId, update);
 
     return { nickname, bio };
 };

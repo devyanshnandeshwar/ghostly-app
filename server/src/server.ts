@@ -58,4 +58,11 @@ const shutdown = async () => {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-start();
+// connectRedis has no try/catch of its own, unlike connectDB which exits 1. An
+// unreachable Redis at boot therefore rejected start(), server.listen was never
+// reached, and the process died with no line saying why -- just a port that
+// never opened.
+start().catch((error: any) => {
+    logger.error(`[Server] Failed to start: ${error?.message ?? error}`);
+    process.exit(1);
+});

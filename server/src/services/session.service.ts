@@ -147,8 +147,8 @@ const CACHED_FIELDS = new Set<keyof QueueSessionView | string>([
     "pastMatches"
 ]);
 
-/** True if an update writes any field the Redis view mirrors. */
-function touchesCachedField(update: UpdateQuery<any>): boolean {
+/** True if an update writes any field the cached view mirrors. */
+export function touchesCachedField(update: UpdateQuery<any>): boolean {
     const hits = (field: string) => CACHED_FIELDS.has(field.split(".")[0]);
 
     for (const [key, value] of Object.entries(update)) {
@@ -210,8 +210,13 @@ export async function touchLastActive(sessionId: string) {
         });
         if (!acquired) return;
     } catch (error: any) {
-        logger.warn(`lastActive throttle failed: ${error.message}`);
-        return;
+        // Fall through to the write rather than returning. The throttle is an
+        // optimisation; skipping the write when it fails means that during a
+        // Redis outage no session's lastActive is refreshed at all -- and the
+        // 30-day TTL index on that field then deletes the sessions of users who
+        // are actively connected. Writing too often is cheap; not writing is
+        // data loss.
+        logger.warn(`lastActive throttle failed, writing anyway: ${error.message}`);
     }
 
     await updateSession(sessionId, { lastActive: new Date() });

@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import { Report } from "../models/Report";
 import { AuditLog } from "../models/AuditLog";
 import { logger } from "../utils/logger";
@@ -12,9 +13,20 @@ function actorOf(req: Request): string {
 }
 
 /** Express 5 types a route param as string | string[]; these routes take one. */
-function paramId(req: Request): string {
+export function paramId(req: Request): string {
     const raw = req.params.id;
     return Array.isArray(raw) ? (raw[0] ?? "") : (raw ?? "");
+}
+
+/**
+ * A malformed id is the caller's mistake, not ours.
+ *
+ * Without this, mongoose threw a CastError on anything that is not an ObjectId
+ * and the generic handler answered 500 -- so a typo in an admin URL looked like
+ * a server fault and told the operator nothing about what was wrong.
+ */
+export function isValidId(id: string): boolean {
+    return mongoose.isValidObjectId(id);
 }
 
 export const getReports = async (req: Request, res: Response) => {
@@ -46,6 +58,8 @@ export const getReports = async (req: Request, res: Response) => {
 export const resolveReport = async (req: Request, res: Response) => {
     try {
         const id = paramId(req);
+        if (!isValidId(id)) return res.status(400).json({ error: "Invalid report id" });
+
         const report = await Report.findByIdAndUpdate(id, { resolved: true }, { new: true });
 
         if (!report) return res.status(404).json({ error: "Report not found" });
@@ -65,6 +79,8 @@ export const resolveReport = async (req: Request, res: Response) => {
 export const setSessionStatus = async (req: Request, res: Response) => {
     try {
         const id = paramId(req);
+        if (!isValidId(id)) return res.status(400).json({ error: "Invalid session id" });
+
         const { status, note } = req.body ?? {};
 
         if (!["active", "limited", "banned"].includes(status)) {

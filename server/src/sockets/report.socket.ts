@@ -57,12 +57,23 @@ export const reportSocketHandler = (io: Server, socket: SessionSocket) => {
             for (const s of roomSockets) {
                 s.emit("partner-disconnected");
                 s.leave(roomId);
+                // The E2EE public key is per conversation. handleLeaveChat
+                // clears it on every teardown path and this one did not, so a
+                // key survived onto the next match: the reconciliation loop in
+                // chat.socket then served a partner the key from the previous
+                // conversation, which the other side had already rotated away
+                // from. Nothing they sent could be decrypted.
+                s.data.publicKey = undefined;
                 await clearActiveMatch(s.id);
             }
 
         } catch (error: any) {
             logger.error(`Report error: ${error.message}`);
-            socket.emit("queue-error", error.message);
+            // createReport throws both intentional user-facing strings and
+            // whatever the Mongo driver raises. Relaying error.message sent the
+            // latter -- index names, validation internals -- straight to the
+            // browser.
+            socket.emit("queue-error", "Could not submit that report. Please try again.");
         }
     }));
 };
