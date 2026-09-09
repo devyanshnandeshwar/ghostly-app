@@ -96,3 +96,60 @@ describe("parseBearer", () => {
         expect(parseBearer(undefined)).toBeNull();
     });
 });
+
+// Gaps left by the suite above: the payload survives the signature check but is
+// still attacker-shaped, and parseBearer is the only thing between a header and
+// the verifier.
+describe("payloads that pass the signature check but are not sessions", () => {
+    const signedPayload = (payload: unknown) => {
+        // Re-signs an arbitrary payload with the real secret, so the signature is
+        // valid and only the payload contents are under test.
+        const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+        const body = `v1.${encoded}`;
+        const sig = require("crypto")
+            .createHmac("sha256", process.env.SESSION_SECRET)
+            .update(body)
+            .digest("base64url");
+        return `${body}.${sig}`;
+    };
+
+    test("refuses a correctly signed literal null", () => {
+        expect(verifySessionToken(signedPayload(null))).toBeNull();
+    });
+
+    test("refuses a correctly signed payload with no deviceId", () => {
+        expect(verifySessionToken(signedPayload({ issuedAt: Date.now(), version: 0 }))).toBeNull();
+    });
+
+    test("refuses a deviceId that is an object rather than a string", () => {
+        expect(
+            verifySessionToken(signedPayload({ deviceId: { $ne: null }, issuedAt: Date.now() }))
+        ).toBeNull();
+    });
+
+    test("refuses a non-numeric issuedAt", () => {
+        expect(verifySessionToken(signedPayload({ deviceId: "d", issuedAt: "now" }))).toBeNull();
+    });
+
+    test("refuses a non-finite issuedAt, which would otherwise never look expired", () => {
+        expect(verifySessionToken(signedPayload({ deviceId: "d", issuedAt: Infinity }))).toBeNull();
+    });
+});
+
+describe("parseBearer edge cases", () => {
+    test("is case sensitive about the scheme", () => {
+        expect(parseBearer("bearer abc")).toBeNull();
+    });
+
+    test("ignores a header that is only the scheme", () => {
+        expect(parseBearer("Bearer")).toBeNull();
+    });
+
+    test("treats a whitespace-only credential as absent", () => {
+        expect(parseBearer("Bearer    ")).toBeNull();
+    });
+
+    test("trims surrounding whitespace from the credential", () => {
+        expect(parseBearer("Bearer  abc  ")).toBe("abc");
+    });
+});
