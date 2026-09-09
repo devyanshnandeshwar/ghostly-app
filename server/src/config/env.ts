@@ -57,6 +57,16 @@ export const config = {
     // entries are development-only. See cors.ts.
     CORS_ORIGINS: buildCorsOrigins(clientUrl, nodeEnv),
     NODE_ENV: nodeEnv,
+    /**
+     * Whether error responses may carry a stack trace.
+     *
+     * Deliberately keyed on the RAW variable being explicitly set, not on
+     * NODE_ENV above -- which falls back to "development" when unset. On a PaaS,
+     * unset is a common production configuration, so a "not production" test
+     * exposes stacks precisely where it must not. Opt in, never opt out.
+     */
+    EXPOSE_ERROR_DETAILS:
+        process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test",
     SESSION_SECRET: process.env.SESSION_SECRET || DEV_SESSION_SECRET,
     // No default: admin routes fail closed when this is unset.
     ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
