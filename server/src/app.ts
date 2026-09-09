@@ -24,6 +24,15 @@ const app = express();
 // takes the entry Caddy appended and ignores anything the client invented.
 app.set("trust proxy", 1);
 
+// Before every middleware, deliberately. Behind globalLimiter a platform probe
+// at 5s intervals is 180 requests per 15-minute window from one key, so the
+// health check earned itself a 429 and the container was cycled for being
+// unhealthy while serving fine. It also must not depend on the rate limiter's
+// Redis store being reachable to answer at all.
+app.get("/health", (_, res) => {
+    res.json({ status: "OK" });
+});
+
 app.use(helmet());
 app.use(compression());
 app.use(cors({
@@ -54,10 +63,6 @@ for (const [path, router] of routes) {
     app.use(`/api/v1${path}`, router);
     app.use(`/api${path}`, router);
 }
-
-app.get("/health", (_, res) => {
-    res.json({ status: "OK" });
-});
 
 app.use(errorHandler);
 

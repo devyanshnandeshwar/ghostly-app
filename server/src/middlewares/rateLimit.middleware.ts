@@ -19,6 +19,21 @@ const keyGenerator = (req: any) => {
     return `ip:${ipKeyGenerator(req.ip ?? "unknown")}`;
 };
 
+/**
+ * Rate limiting is a defence against abuse, not a dependency of the product.
+ *
+ * express-rate-limit defaults passOnStoreError to false and RETHROWS a store
+ * error, which Express 5 turns into next(err) and the error handler answers
+ * with a 500. Because globalLimiter is mounted app-wide, one transient Redis
+ * failure meant every route returned 500 -- auth, session init and /health
+ * alike. The platform health check then failed and cycled the container, which
+ * does nothing to fix a Redis outage and turns a blip into a restart loop.
+ *
+ * Failing open costs an unmetered window while Redis is down. Failing closed
+ * costs the entire product. Every limiter below opts into the former.
+ */
+const FAIL_OPEN = { passOnStoreError: true } as const;
+
 // Shared across instances. The default store is in-process, so with more than
 // one replica -- which the Socket.IO Redis adapter exists to allow -- the real
 // limit became N x max, and any restart wiped it.
@@ -37,6 +52,7 @@ const store = (prefix: string) =>
     });
 
 export const verifyLimiter = rateLimit({
+    ...FAIL_OPEN,
     windowMs: 60 * 1000, // 1 minute
     max: 5, // 5 requests per minute
     keyGenerator,
@@ -45,6 +61,7 @@ export const verifyLimiter = rateLimit({
 });
 
 export const sessionLimiter = rateLimit({
+    ...FAIL_OPEN,
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 100, // 100 requests per hour
     keyGenerator,
@@ -53,6 +70,7 @@ export const sessionLimiter = rateLimit({
 });
 
 export const globalLimiter = rateLimit({
+    ...FAIL_OPEN,
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // 100 requests per 15 minutes
     keyGenerator,

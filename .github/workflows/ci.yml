@@ -35,8 +35,12 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      # `bun run test`, not `bun test`: the script passes --isolate, which gives
+      # each test file its own module registry. Without it a mock.module in one
+      # file leaks into every file that runs after it, so the suite passes or
+      # fails depending on file order.
       - name: Test
-        run: bun test
+        run: bun run test
 
   client:
     name: Client
