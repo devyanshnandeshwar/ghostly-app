@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { logger } from "../utils/logger";
 import { getActiveMatch } from "../services/presence.service";
+import { safeHandler, isRecord } from "./safeHandler";
 
 /**
  * Ciphertext for a chat message. Generous next to any real message, small
@@ -28,7 +29,13 @@ export const chatSocketHandler = (io: Server, socket: Socket) => {
     };
 
     // E2EE Key Exchange
-    socket.on("exchange-key", async ({ roomId, key }: { roomId: string, key: JsonWebKey }) => {
+    socket.on("exchange-key", safeHandler("exchange-key", async (payload: unknown) => {
+        // Validate before destructuring: `{ roomId } = undefined` throws inside
+        // an async handler, which Socket.IO leaves unhandled and the runtime
+        // turns into process exit. See safeHandler.ts.
+        if (!isRecord(payload)) return;
+        const { roomId, key } = payload as { roomId?: unknown; key?: unknown };
+
         if (!isRoomId(roomId) || !key || typeof key !== "object") return;
         if (!await isInRoom(roomId, "exchange-key")) return;
 
@@ -43,18 +50,25 @@ export const chatSocketHandler = (io: Server, socket: Socket) => {
                 socket.emit("exchange-key", partnerSocket.data.publicKey);
             }
         }
-    });
+    }));
 
     // Chat Handlers
-    socket.on("join-room", async (roomId: string) => {
+    socket.on("join-room", safeHandler("join-room", async (roomId: unknown) => {
         if (!isRoomId(roomId)) return;
         if (!await isInRoom(roomId, "join")) return;
 
         socket.join(roomId);
         logger.debug(`User ${socket.id} joined room ${roomId}`);
-    });
+    }));
 
-    socket.on("send-message", async ({ roomId, message, iv }: { roomId: string, message: string, iv: string }) => {
+    socket.on("send-message", safeHandler("send-message", async (payload: unknown) => {
+        if (!isRecord(payload)) return;
+        const { roomId, message, iv } = payload as {
+            roomId?: unknown;
+            message?: unknown;
+            iv?: unknown;
+        };
+
         // Shape before authorisation: an oversized or malformed payload is not
         // worth a room lookup, and relaying one unchecked fans it out to the
         // partner at whatever size the sender chose.
@@ -69,12 +83,15 @@ export const chatSocketHandler = (io: Server, socket: Socket) => {
 
         // Server ONLY relays ciphertext + IV. No decryption possible.
         socket.to(roomId).emit("receive-message", { message, iv });
-    });
+    }));
 
-    socket.on("typing", async ({ roomId, isTyping }: { roomId: string, isTyping: boolean }) => {
+    socket.on("typing", safeHandler("typing", async (payload: unknown) => {
+        if (!isRecord(payload)) return;
+        const { roomId, isTyping } = payload as { roomId?: unknown; isTyping?: unknown };
+
         if (!isRoomId(roomId) || typeof isTyping !== "boolean") return;
         if (!await isInRoom(roomId, "typing")) return;
 
         socket.to(roomId).emit("partner-typing", isTyping);
-    });
+    }));
 };

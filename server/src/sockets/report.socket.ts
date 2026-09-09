@@ -5,6 +5,7 @@ import { REPORT_REASONS, ReportReason } from "../models/Report";
 import { logger } from "../utils/logger";
 import { getActiveMatch, clearActiveMatch } from "../services/presence.service";
 import type { SessionSocket } from "./socketManager";
+import { safeHandler, isRecord } from "./safeHandler";
 
 // xssMiddleware only covers Express. Socket payloads never passed through it,
 // so report text reached Mongo raw and unbounded -- and /api/admin/reports
@@ -25,7 +26,12 @@ function cleanDescription(description: unknown): string | undefined {
 }
 
 export const reportSocketHandler = (io: Server, socket: SessionSocket) => {
-    socket.on("report-user", async ({ reason, description }: { reason?: unknown, description?: unknown }) => {
+    socket.on("report-user", safeHandler("report-user", async (payload: unknown) => {
+        // Validate before destructuring -- see safeHandler.ts. A bare
+        // `socket.emit("report-user")` used to be enough to end the process.
+        if (!isRecord(payload)) return;
+        const { reason, description } = payload as { reason?: unknown; description?: unknown };
+
         const activeMatch = await getActiveMatch(socket.id);
         if (!activeMatch) return;
 
@@ -58,5 +64,5 @@ export const reportSocketHandler = (io: Server, socket: SessionSocket) => {
             logger.error(`Report error: ${error.message}`);
             socket.emit("queue-error", error.message);
         }
-    });
+    }));
 };

@@ -7,9 +7,10 @@ import { canEnterQueue } from "../services/moderation.policy";
 import { rememberMatchUpdate } from "../services/matchHistory";
 import { logger } from "../utils/logger";
 import type { SessionSocket } from "./socketManager";
+import { safeHandler } from "./safeHandler";
 
 export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
-    socket.on("join-queue", async () => {
+    socket.on("join-queue", safeHandler("join-queue", async () => {
          try {
             const session = socket.data.session;
             // Redis-cached view: joining the queue no longer costs a Mongo read.
@@ -108,26 +109,25 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
              logger.error(`Queue error: ${err.message}`);
              socket.emit("queue-error", "Internal error");
          }
-    });
+    }));
 
-    socket.on("leave-queue", () => {
+    socket.on("leave-queue", safeHandler("leave-queue", () => {
         removeFromQueue(socket.id);
-    });
+    }));
 
-    socket.on("leave-chat", () => {
-        handleLeaveChat(io, socket, false);
-    });
+    // These three used to drop the promise handleLeaveChat returns. A rejection
+    // there was an unhandled rejection, which the runtime turns into process
+    // exit -- join-queue was wrapped in try/catch and these were not.
+    socket.on("leave-chat", safeHandler("leave-chat", () => handleLeaveChat(io, socket, false)));
 
-    socket.on("next-match", () => {
-        handleLeaveChat(io, socket, true);
-    });
+    socket.on("next-match", safeHandler("next-match", () => handleLeaveChat(io, socket, true)));
 
-    socket.on("disconnect", async () => {
+    socket.on("disconnect", safeHandler("disconnect", async () => {
         removeFromQueue(socket.id);
         if (await getActiveMatch(socket.id)) {
             await handleLeaveChat(io, socket, false);
         }
-    });
+    }));
 };
 
 async function handleLeaveChat(io: Server, socket: SessionSocket, isNext: boolean) {
