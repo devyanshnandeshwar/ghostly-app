@@ -40,7 +40,18 @@ export const redisClient = createClient({
 });
 
 redisClient.on("error", (err) => logger.error(`Redis Client Error: ${err}`));
-redisClient.on("connect", () => logger.info("Redis Connected"));
+
+// "ready", not "connect". connect fires when the SOCKET is up, which is BEFORE
+// authentication. With a wrong password the log read:
+//
+//     [INFO]  Redis Connected
+//     [ERROR] Redis Client Error: WRONGPASS invalid username-password pair
+//
+// every two seconds -- announcing success immediately before failing auth. That
+// reads like a flapping network and sent a real diagnosis down the wrong path,
+// when it was a credential someone could have fixed in a minute. ready fires
+// only once AUTH has succeeded, so the line now means what it says.
+redisClient.on("ready", () => logger.info("Redis Connected"));
 
 // Settles once the boot connect attempt has FINISHED -- succeeded or not. The
 // rate limiter's Redis store is constructed at import time, before start()
