@@ -107,10 +107,34 @@ const shutdown = async () => {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-// connectRedis has no try/catch of its own, unlike connectDB which exits 1. An
-// unreachable Redis at boot therefore rejected start(), server.listen was never
-// reached, and the process died with no line saying why -- just a port that
-// never opened.
+// Without these the process dies on an unhandled rejection with whatever the
+// runtime prints, mid-request, leaving open sockets severed and no line in the
+// log saying it was us. safeHandler covers socket listeners only; anything
+// outside a socket handler -- a controller, a service, a stray timer -- had
+// nothing. Drain first so in-flight chats close cleanly, then exit non-zero so
+// the platform restarts rather than leaving a half-dead process serving.
+const fatal = (label: string) => (error: unknown) => {
+    logger.error(
+        `[Server] ${label}: ${
+            error instanceof Error ? (error.stack ?? error.message) : String(error)
+        }`
+    );
+    // shutdown() ends in process.exit(0), which would report success for a
+    // crash, so bound the drain here and exit 1 regardless of which wins.
+    const drained = shutdown().catch(() => {});
+    Promise.race([
+        drained,
+        new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS))
+    ]).finally(() => process.exit(1));
+};
+
+process.on("uncaughtException", fatal("Uncaught exception"));
+process.on("unhandledRejection", fatal("Unhandled rejection"));
+
+// connectRedis is bounded by its own timeout now and start() tolerates it
+// failing, so reaching here means something else: Mongo, or a config assertion
+// that threw at import time. Either way no port ever opened, so say why rather
+// than dying silently.
 start().catch((error: any) => {
     logger.error(`[Server] Failed to start: ${error?.message ?? error}`);
     process.exit(1);
