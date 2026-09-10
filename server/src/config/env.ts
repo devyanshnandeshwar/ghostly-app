@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { buildCorsOrigins, assertUsableClientUrl } from "./cors";
 import { assertUsableSessionSecret } from "./sessionSecret";
+import { assertUsableDatastoreUrls } from "./datastoreUrls";
 
 // Load .env file
 const envPath = path.resolve(__dirname, "../../.env");
@@ -86,12 +87,11 @@ export const config = {
     )
 };
 
-// Validate essential env vars
-const requiredVars = ["MONGO_URI"];
-const missingVars = requiredVars.filter((key) => !process.env[key]);
-
-if (missingVars.length > 0) {
-    console.warn(`[Config] ⚠️  Missing required environment variables: ${missingVars.join(", ")}`);
+// Outside production a missing MONGO_URI is ordinary -- the localhost default
+// is the point of it. Warn so the developer knows which default they landed on.
+// In production this is an assertion instead; see assertUsableDatastoreUrls.
+if (config.NODE_ENV !== "production" && !process.env.MONGO_URI) {
+    console.warn("[Config] ⚠️  MONGO_URI is not set; using the localhost default.");
 }
 
 // SESSION_SECRET signs session tokens. A known or guessable value in production
@@ -104,3 +104,13 @@ assertUsableSessionSecret(config.SESSION_SECRET, config.NODE_ENV);
 // CLIENT_URL decides who may make credentialed cross-origin calls, and it
 // defaults to localhost. Unset in production that is a hole, not a default.
 assertUsableClientUrl(config.CLIENT_URL, config.NODE_ENV);
+
+// MONGO_URI and REDIS_URL default to localhost too, and used to be the only
+// production-critical variables with no guard at all -- a missing one produced
+// a warning at most, then failed much later with a message about the default
+// rather than about the missing configuration.
+assertUsableDatastoreUrls(
+    config.MONGO_URI,
+    process.env.REDIS_URL ?? "",
+    config.NODE_ENV
+);
