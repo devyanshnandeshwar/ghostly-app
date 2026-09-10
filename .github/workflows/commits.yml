@@ -1,0 +1,36 @@
+# Enforces Conventional Commits on pull requests.
+#
+# Commit messages are the only durable record of WHY a change was made -- the
+# diff already shows what. This checks the shape (type, scope, subject length);
+# it cannot check that the body explains the reasoning, which is what actually
+# matters. See .gitmessage for that part.
+
+name: Commits
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  conventional:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # commitlint needs the range, not just the tip.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: server/.bun-version
+
+      - name: Install commitlint
+        run: bun add -g @commitlint/cli @commitlint/config-conventional
+
+      - name: Lint commits in this PR
+        run: |
+          bunx --bun commitlint \
+            --from "${{ github.event.pull_request.base.sha }}" \
+            --to "${{ github.event.pull_request.head.sha }}" \
+            --verbose

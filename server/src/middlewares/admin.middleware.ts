@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { config } from "../config/env";
 import { logger } from "../utils/logger";
+import { resolveClientIp } from "../config/clientIp";
 
 /**
  * Guards admin-only routes with a shared secret.
@@ -31,7 +32,14 @@ export function requireAdmin(
         : "";
 
     if (!provided || !timingSafeEqual(provided, expected)) {
-        logger.warn(`Unauthorized admin request from ${req.ip} to ${req.originalUrl}`);
+        // Not req.ip: behind Render that is the internal balancer, so every
+        // failed admin attempt logged the same address and the line was useless
+        // for identifying who was probing.
+        const caller = resolveClientIp({
+            headers: req.headers,
+            socketAddress: req.socket?.remoteAddress
+        });
+        logger.warn(`Unauthorized admin request from ${caller} to ${req.originalUrl}`);
         return res.status(401).json({
             error: "Unauthorized"
         });

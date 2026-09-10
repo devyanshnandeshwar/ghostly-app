@@ -20,38 +20,87 @@ const io = initializeSocketIO(server);
 // are dropped when they are looked at -- see queue.store.ts.
 
 async function start() {
-    await connectRedis();
+    // Redis is not allowed to prevent a boot.
+    //
+    // It holds the filter quota and the rate-limit counters -- abuse controls,
+    // not the product. The limiters already fail open at request time (see
+    // FAIL_OPEN in rateLimit.middleware), so refusing to start when Redis is
+    // briefly unreachable was strictly harsher than the hot path it protects,
+    // and on a managed Redis a boot-time blip is an ordinary event.
+    //
+    // Mongo is different and stays fatal: without it there are no sessions, and
+    // every request would fail anyway.
+    try {
+        await connectRedis();
+    } catch (error: any) {
+        logger.error(
+            `[Server] Redis unavailable at boot, continuing without it: ${error?.message ?? error}`
+        );
+    }
+
     await connectDB();
 
     server.listen(PORT, () => {
         logger.info(`Server running on port ${PORT}`);
     });
-
 }
 
+/** Bounds the drain, so a stuck connection cannot hold the process open. */
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+const closeQuietly = (label: string, close: (cb: () => void) => void) =>
+    new Promise<void>((resolve) => {
+        close(() => {
+            logger.info(`[Server] ${label} closed`);
+            resolve();
+        });
+    });
+
+let shuttingDown = false;
+
 const shutdown = async () => {
-    logger.info("\n[Server] Gracefully shutting down...");
+    // SIGTERM can arrive more than once, and Render sends it on every deploy
+    // and every spin-down. Re-entering would close things twice.
+    if (shuttingDown) return;
+    shuttingDown = true;
 
-    server.close(() => {
-        logger.info("[Server] HTTP server closed");
-    });
+    logger.info("[Server] Gracefully shutting down...");
 
-    io.close(() => {
-         logger.info("[Server] Socket.IO closed");
-    });
-    
+    // Previously process.exit(0) ran while these were still closing, so
+    // in-flight requests and every open conversation were severed rather than
+    // drained -- on a free tier that idles out, that is every deploy and every
+    // nap.
+    const drain = Promise.all([
+        closeQuietly("HTTP server", (cb) => server.close(cb)),
+        closeQuietly("Socket.IO", (cb) => io.close(cb))
+    ]);
+
+    const timedOut = Symbol("timeout");
+    const result = await Promise.race([
+        drain,
+        new Promise((resolve) => setTimeout(() => resolve(timedOut), SHUTDOWN_TIMEOUT_MS))
+    ]);
+
+    if (result === timedOut) {
+        logger.warn(`[Server] Drain exceeded ${SHUTDOWN_TIMEOUT_MS}ms, exiting anyway`);
+    }
+
     try {
-        await import("mongoose").then(m => m.disconnect());
+        await import("mongoose").then((m) => m.disconnect());
         logger.info("[Server] MongoDB disconnected");
     } catch (err) {
         logger.error("[Server] Error disconnecting MongoDB", err);
     }
-    
+
     if (redisClient.isOpen) {
-        await redisClient.disconnect();
-        logger.info("[Server] Redis disconnected");
+        try {
+            await redisClient.disconnect();
+            logger.info("[Server] Redis disconnected");
+        } catch (err) {
+            logger.error("[Server] Error disconnecting Redis", err);
+        }
     }
-    
+
     process.exit(0);
 };
 

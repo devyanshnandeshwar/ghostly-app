@@ -20,7 +20,7 @@ const ProfileSetup = lazy(() =>
 );
 
 function App() {
-  const { loading, session, refreshSession } = useSession();
+  const { loading, session, isColdStart, refreshSession } = useSession();
   const { findMatch, status, roomId, partner, cancelMatch } = useMatch();
   const [verified, setVerified] = useState(false);
   const [profileComplete, setProfileComplete] = useState(false);
@@ -68,6 +68,22 @@ function App() {
         <Navbar />
         <div className="mx-auto w-full max-w-md flex-1 px-4 py-10">
           <CardSkeleton />
+          {/*
+            The API sleeps after 15 minutes idle and takes about a minute to
+            wake. Without this the first visitor after a nap watches an
+            unexplained skeleton and concludes the app is broken -- so say what
+            is happening rather than letting them guess.
+          */}
+          {isColdStart && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="mt-6 text-center text-sm leading-relaxed text-muted-foreground animate-in fade-in duration-500"
+            >
+              Waking the server up — it sleeps when nobody is around.
+              <span className="mt-1 block text-xs">This takes up to a minute.</span>
+            </p>
+          )}
         </div>
       </div>
     );

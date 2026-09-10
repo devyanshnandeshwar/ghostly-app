@@ -1,0 +1,16 @@
+# <type>(<scope>): <subject>            <-- 72 chars max, imperative mood
+#
+# <body>
+#
+# The subject says WHAT changed. The body says WHY, which is the part the
+# diff cannot tell anyone. Prefer:
+#
+#   - What was wrong before, concretely enough to recognise it
+#   - Why this fix rather than an obvious alternative
+#   - What is deliberately NOT addressed, and why
+#
+# A body that restates the diff in prose adds nothing. A body that explains
+# a decision saves the next person an hour.
+#
+# Types: feat fix refactor perf docs test build ci chore revert
+# Wrap the body at 78 characters.

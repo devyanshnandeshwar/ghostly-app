@@ -14,14 +14,17 @@ import { xssMiddleware } from "./middlewares/xss.middleware";
 
 const app = express();
 
-// Exactly one proxy (Caddy) sits in front. Without this, req.ip is Caddy's
-// container IP for EVERY request, so all unauthenticated callers shared a
-// single rate-limit bucket -- 100 requests from anyone locked out every new
-// visitor, because /api/session/init is the first call each one makes.
+// Render fronts this service with Cloudflare and its own load balancer, so the
+// forwarded chain is `client, cloudflare-edge, 10.x-render-lb`. `trust proxy` is
+// a hop COUNT, and any count wrong for the platform silently resolves req.ip to
+// an internal address -- one value for every visitor.
 //
-// Deliberately 1, not `true`: trusting every hop lets a client spoof
-// X-Forwarded-For and evade the limiter entirely. With a hop count, Express
-// takes the entry Caddy appended and ignores anything the client invented.
+// Nothing security-relevant depends on it any more: both the rate limiter and
+// the admin audit log resolve the caller through config/clientIp.ts, which
+// prefers CF-Connecting-IP -- a header Cloudflare overwrites and a caller
+// cannot forge. This stays so req.protocol and req.secure reflect the original
+// scheme, and stays a NUMBER because express-rate-limit raises
+// ERR_ERL_PERMISSIVE_TRUST_PROXY on every request when it is `true`.
 app.set("trust proxy", 1);
 
 // Before every middleware, deliberately. Behind globalLimiter a platform probe

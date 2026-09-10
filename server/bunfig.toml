@@ -3,3 +3,12 @@
 # in process.env, so pinning them here keeps tests deterministic regardless of
 # the developer's local .env.
 preload = ["./src/testing/setup.ts"]
+
+# Coverage is reported on demand (`bun run test:coverage`), not on every run.
+#
+# bunfig's coverageThreshold is deliberately NOT used: set as a scalar it gates
+# per-file and fails on the untested controllers; set as a table it did not gate
+# at all in this version. A threshold that does not fail when it should is worse
+# than none, so enforcement lives in scripts/check-coverage.mjs where it can be
+# verified.
+coverageSkipTestFiles = true

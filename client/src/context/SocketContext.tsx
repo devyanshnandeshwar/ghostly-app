@@ -28,7 +28,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     useEffect(() => {
         const token = getSessionToken();
         if (session && token) {
-            // In deployment we proxy Socket.IO through nginx, so same-origin works.
+            // VITE_SOCKET_URL is required in any real deployment: the SPA is on
+            // Vercel and the API on Render, so they are different origins and
+            // the fallback below reaches a host that serves no Socket.IO. It is
+            // kept only for same-origin local development. The build refuses to
+            // ship without it -- see scripts/check-deploy-config.mjs.
             const socketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
             const socketInstance = socketService.connect(socketUrl, token);
             // Creating an imperative resource and exposing it through state is

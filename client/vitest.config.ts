@@ -25,7 +25,41 @@ export default mergeConfig(
             // verbatimModuleSyntax, and eslint lints test files too, so globals
             // would need extra config for no benefit.
             globals: false,
-            include: ["src/**/*.test.{ts,tsx}"]
+            include: ["src/**/*.test.{ts,tsx}"],
+            coverage: {
+                provider: "v8",
+                reporter: ["text", "lcov"],
+                // `all` is the point. Without it only files a test imports are
+                // instrumented, so an entirely untested module is invisible and
+                // the headline percentage flatters the suite.
+                all: true,
+                include: ["src/**/*.{ts,tsx}"],
+                exclude: [
+                    "src/**/*.test.{ts,tsx}",
+                    "src/test/**",
+                    // shadcn primitives, vendored rather than authored here.
+                    "src/components/ui/**",
+                    "src/main.tsx",
+                    "src/vite-env.d.ts"
+                ],
+                // A RATCHET, not a target.
+                //
+                // Real client coverage with `all` enabled is ~16% -- the suite
+                // covers pure logic (crypto, countdown, auth, socketService,
+                // apiError, cameraError) thoroughly and the components barely
+                // at all. Setting the 80% standard here would fail CI on the
+                // first run and teach everyone to bypass it.
+                //
+                // So these sit just under the current figures: they cannot be
+                // met by deleting tests, and they must be raised as component
+                // coverage lands. The server, measured the same way, is at 83%.
+                thresholds: {
+                    lines: 16,
+                    functions: 19,
+                    statements: 16,
+                    branches: 10
+                }
+            }
         }
     })
 );

@@ -42,6 +42,11 @@ jobs:
       - name: Test
         run: bun run test
 
+      # Enforced by scripts/check-coverage.mjs rather than bunfig, which gates
+      # per-file as a scalar and did not gate at all as a table.
+      - name: Coverage
+        run: bun run test:coverage
+
   client:
     name: Client
     runs-on: ubuntu-latest
@@ -63,6 +68,72 @@ jobs:
       - name: Test
         run: bun run test
 
+      - name: Coverage
+        run: bun run test:coverage
+
       # `build` is `tsc -b && vite build`, so this typechecks the client too.
+      #
+      # CI=true also arms scripts/check-deploy-config.mjs, which fails the build
+      # if vercel.json still carries the CSP placeholder or the API URLs are
+      # unset -- the misconfiguration that otherwise ships an app that loads and
+      # silently cannot reach its own backend.
       - name: Build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL }}
         run: bun run build
+
+  # ---------------------------------------------------------------- deploy
+  #
+  # Vercel and Render both auto-deploy on push by default, which means a red
+  # build ships. Point both at THIS job instead (disable their git auto-deploy)
+  # so tests are a gate rather than a report published after the fact.
+  #
+  # Skipped entirely if the secrets are absent, so a fork or a first-run repo
+  # does not fail CI on deployment it was never meant to do.
+  deploy:
+    name: Deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [server, client]
+    runs-on: ubuntu-latest
+    concurrency:
+      # One deploy at a time; a newer push supersedes an in-flight older one.
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: server/.bun-version
+
+      - name: Deploy API to Render
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RENDER_DEPLOY_HOOK:-}" ]; then
+            echo "RENDER_DEPLOY_HOOK not set — skipping API deploy."
+            exit 0
+          fi
+          # Render answers 200 with a JSON body naming the queued deploy. A
+          # non-2xx here means the hook is wrong, and silently ignoring that
+          # would leave the API on an old build while the SPA moved on.
+          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK"
+          echo "API deploy queued."
+
+      - name: Deploy SPA to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: client
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "VERCEL_TOKEN not set — skipping SPA deploy."
+            exit 0
+          fi
+          bunx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          bunx vercel@latest build --prod --token="$VERCEL_TOKEN"
+          bunx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"

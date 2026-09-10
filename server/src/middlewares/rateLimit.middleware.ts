@@ -1,10 +1,19 @@
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { resolveClientIp } from "../config/clientIp";
 import RedisStore from "rate-limit-redis";
 import { redisClient, redisReady } from "../config/redis";
 import { parseBearer, verifySessionToken } from "../utils/token";
 
 // Key on the session we actually verified, so the limit can't be reset by
 // inventing a new identifier. Unauthenticated requests fall back to IP.
+//
+// NOT req.ip. Express derives that from `trust proxy`, a hop count, and on
+// Render the chain is `client, cloudflare-edge, 10.x-render-lb` -- one hop in
+// from the right is the internal balancer, the same value for every visitor.
+// That put every unauthenticated caller, including everyone hitting session
+// init on their first page load, into a single shared bucket. resolveClientIp
+// prefers CF-Connecting-IP, which cannot be forged, and is the same resolution
+// the socket handshake uses.
 //
 // ipKeyGenerator normalises IPv6: without it every request from a /64 gets its
 // own bucket, so a single client with an IPv6 prefix can sidestep the limit.
@@ -16,7 +25,12 @@ const keyGenerator = (req: any) => {
         if (payload) return `session:${payload.deviceId}`;
     }
 
-    return `ip:${ipKeyGenerator(req.ip ?? "unknown")}`;
+    const address = resolveClientIp({
+        headers: req.headers,
+        socketAddress: req.socket?.remoteAddress
+    });
+
+    return `ip:${ipKeyGenerator(address)}`;
 };
 
 /**
