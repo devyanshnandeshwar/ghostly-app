@@ -31,4 +31,16 @@ const AuditLogSchema = new mongoose.Schema(
 AuditLogSchema.index({ timestamp: -1 });
 AuditLogSchema.index({ target: 1, timestamp: -1 });
 
+// Deliberately the one collection with NO TTL, unlike UserSession and Report.
+//
+// These are moderation decisions -- who banned whom, and why. They are the
+// record you need precisely when a decision is disputed, which is usually long
+// after it was made, and they are written only when a moderator acts, so the
+// volume is a rounding error against Atlas M0's 512MB.
+//
+// Expiring them would trade real accountability for storage nobody is short of.
+// If that ever changes, archive out rather than adding expireAfterSeconds here:
+// autoIndex is on, so a TTL added to this file starts deleting on the next boot,
+// with no migration step to review first.
+
 export const AuditLog = mongoose.model("AuditLog", AuditLogSchema);

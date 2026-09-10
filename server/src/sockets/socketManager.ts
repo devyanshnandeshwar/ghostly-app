@@ -22,6 +22,20 @@ export interface SocketData {
 // second persistent Redis connection plus pub/sub traffic on every room event
 // -- which Upstash bills per command. fetchSockets() and socketsJoin() work
 // unchanged against the default in-process adapter.
+//
+// DO NOT RUN MORE THAN ONE INSTANCE without restoring it.
+//
+// This is the load-bearing assumption of the whole socket layer, and breaking
+// it fails silently rather than loudly -- no error, just users who cannot reach
+// each other. On a second instance: socketsJoin/fetchSockets see only local
+// sockets, so two matched users on different processes never share a room;
+// getActiveMatch returns null for the peer, so isInRoom drops their messages
+// with a warn; and the queue, presence, session caches and skip cooldowns are
+// in-process Maps that each process would hold a different view of.
+//
+// Restoring multi-instance means this adapter, plus Redis-backed
+// implementations behind the interfaces queue.store.ts, presence.store.ts and
+// match.service.ts deliberately kept for exactly that.
 
 /**
  * A connected socket with its authenticated session attached.

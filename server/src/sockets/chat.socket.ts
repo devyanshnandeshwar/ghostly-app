@@ -18,7 +18,9 @@ function isRoomId(value: unknown): value is string {
 export const chatSocketHandler = (io: Server, socket: Socket) => {
     // Every room-scoped event must prove the caller is actually in that match.
     // Room IDs are unguessable in practice, but that is obscurity, not authorization.
-    // Read from Redis rather than socket.data so the check holds across instances.
+    // Read from the match store rather than socket.data, so a stale or forged
+    // socket.data cannot vouch for itself. That store is in-process today, so
+    // this does NOT hold across instances -- see socketManager.ts.
     const isInRoom = async (roomId: string, event: string): Promise<boolean> => {
         const activeMatch = await getActiveMatch(socket.id);
         if (!activeMatch || activeMatch.roomId !== roomId) {
@@ -43,7 +45,8 @@ export const chatSocketHandler = (io: Server, socket: Socket) => {
         socket.to(roomId).emit("exchange-key", key);
 
         // Check if partner already uploaded their key earlier (fixes React mounting race condition!)
-        // fetchSockets() is adapter-aware, so this also finds a partner on another instance.
+        // fetchSockets() is adapter-aware, but the adapter is in-memory now, so
+        // this finds only a partner owned by this process. Fine on one instance.
         const roomSockets = await io.in(roomId).fetchSockets();
         for (const partnerSocket of roomSockets) {
             if (partnerSocket.id !== socket.id && partnerSocket.data.publicKey) {

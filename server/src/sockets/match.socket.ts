@@ -79,9 +79,12 @@ export const matchSocketHandler = (io: Server, socket: SessionSocket) => {
             if (match) {
                 const roomId = `room-${match.user1.socketId}-${match.user2.socketId}`;
                 
-                // socketsJoin goes through the adapter, so it also works when
-                // the peer is connected to a different instance. Looking the
-                // socket up locally would silently skip a remote one.
+                // socketsJoin goes through the adapter, which today is the
+                // in-memory one: the Redis adapter was removed when the
+                // deployment settled on a single instance. This reaches only
+                // sockets owned by THIS process. Correct as long as that stays
+                // true -- see the warning in socketManager.ts before raising the
+                // instance count.
                 await io.in(match.user1.socketId).socketsJoin(roomId);
                 await io.in(match.user2.socketId).socketsJoin(roomId);
 
@@ -198,7 +201,12 @@ async function updateMatchHistory(id1: string, id2: string) {
 
 async function updateUsage(user: any) {
      if (user.preference !== "any") {
-        logger.info(`[Usage Limit] Incrementing usage for ${user.nickname} (${user.sessionId}) due to preference: ${user.preference}`);
+        // Nickname is user-chosen text on an anonymous-chat product, and this
+        // fires on every filtered match -- at info it wrote a display name into
+        // production logs for anyone with log access to read. The session id
+        // alone is enough to trace a quota decision, and debug is compiled out
+        // in production (logger.ts), so the pair only appears while developing.
+        logger.debug(`[Usage Limit] Incrementing usage for ${user.nickname} (${user.sessionId}) due to preference: ${user.preference}`);
         await consumeFilter(user.sessionId);
 
         // Lifetime counter, kept for analytics only. The enforced allowance is
@@ -209,6 +217,6 @@ async function updateUsage(user: any) {
             lastFilterUsageDate: new Date()
         });
     } else {
-        logger.info(`[Usage Limit] No increment for ${user.nickname} (${user.sessionId}) - preference is 'any'`);
+        logger.debug(`[Usage Limit] No increment for ${user.nickname} (${user.sessionId}) - preference is 'any'`);
     }
 }
