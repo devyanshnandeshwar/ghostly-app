@@ -107,6 +107,31 @@ jobs:
         with:
           bun-version-file: server/.bun-version
 
+      # Build the SPA BEFORE anything ships.
+      #
+      # Render used to be kicked first, so a Vercel build that failed here --
+      # and check-deploy-config.mjs fails it deliberately, e.g. on an unreplaced
+      # CSP placeholder -- left the API already updated and the SPA on its old
+      # build. A split deploy is the one outcome worse than not deploying, since
+      # in practice the two halves are versioned together.
+      #
+      # `vercel build` writes .vercel/output; the deploy step below uploads that
+      # exact artifact with --prebuilt rather than building a second time.
+      - name: Build SPA (gates the whole deploy)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: client
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "VERCEL_TOKEN not set — skipping SPA build."
+            exit 0
+          fi
+          bunx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          bunx vercel@latest build --prod --token="$VERCEL_TOKEN"
+
       - name: Deploy API to Render
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
@@ -134,6 +159,4 @@ jobs:
             echo "VERCEL_TOKEN not set — skipping SPA deploy."
             exit 0
           fi
-          bunx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
-          bunx vercel@latest build --prod --token="$VERCEL_TOKEN"
           bunx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"

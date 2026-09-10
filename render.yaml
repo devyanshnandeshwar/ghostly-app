@@ -7,6 +7,12 @@ services:
     name: ghostly-api
     runtime: node          # Render's native runtime; Bun is selected by .bun-version
     plan: free
+    # Undeclared, Render defaults to Oregon -- a long round trip from South Asia
+    # before the app does any work, on a product whose core loop is real-time
+    # chat. Singapore is the nearest option; the others are oregon, ohio and
+    # frankfurt. Pick the one nearest your users, and pick it BEFORE the service
+    # exists: region cannot be changed later, only recreated.
+    region: singapore
     rootDir: server
     buildCommand: bun install --frozen-lockfile
     startCommand: bun src/server.ts
