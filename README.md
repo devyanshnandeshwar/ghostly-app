@@ -173,9 +173,17 @@ trace that names nothing relevant.
 served from, comma-separated. Cross-origin CORS does not degrade gracefully —
 a missing origin means the socket handshake is refused and the app does nothing.
 
-**Replace the CSP placeholder.** `client/vercel.json` has `REPLACE-ME.onrender.com`
-in `connect-src`. Until it points at the real API origin, the SPA cannot reach
-its own backend.
+**The CSP names the API origins.** `client/vercel.json` lists both
+`api.devyansh.tech` and `ghostly-api.onrender.com` in `connect-src`, so
+`VITE_API_URL` can be repointed between the custom domain and the platform one
+without editing the policy. Any other API origin has to be added there first —
+until it is, the browser blocks every request and the WebSocket, and the SPA
+loads but does nothing. `check-deploy-config.mjs` fails the build if the
+placeholder ever comes back.
+
+**Set the build-time API URLs.** `VITE_API_URL` and `VITE_SOCKET_URL` are
+inlined by Vite at build time, so they belong in the Vercel project before the
+first deploy — changing them later needs a rebuild, not a redeploy.
 
 ### What the free tier costs you
 
