@@ -2,6 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "bun run build",
   "outputDirectory": "dist",
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "rewrites": [
     { "source": "/((?!assets/|mediapipe/|face-api/|.*\\.[a-zA-Z0-9]+$).*)", "destination": "/index.html" }
   ],

@@ -7,6 +7,15 @@ services:
     name: ghostly-api
     runtime: node          # Render's native runtime; Bun is selected by .bun-version
     plan: free
+    # Auto-deploy on push is OFF. .github/workflows/ci.yml triggers this
+    # service's deploy hook only after the server and client jobs pass; with
+    # auto-deploy on, Render ships whatever lands on main and the CI gate is
+    # decoration.
+    #
+    # Declared here rather than toggled in the dashboard because this service is
+    # Blueprint-managed: render.yaml is synced on every push, so a dashboard-only
+    # change can be undone by a later sync.
+    autoDeploy: false
     # Undeclared, Render defaults to Oregon -- a long round trip from South Asia
     # before the app does any work, on a product whose core loop is real-time
     # chat. Singapore is the nearest option; the others are oregon, ohio and
