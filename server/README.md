@@ -84,7 +84,7 @@ End-to-end checks against a running server live in `scripts/` — see
 - `src/middlewares/` — session and admin auth, rate limiting, XSS sanitisation, error handling
 - `src/utils/` — signed session tokens and the logger
 - `src/testing/` — test setup and the in-memory Redis fake
-- `src/scripts/` — `check-indexes.ts` and a socket stress test
+- `src/scripts/` — `check-indexes.ts`, a one-off diagnostic that prints the `UserSession` indexes and their TTLs
 - `scripts/` — the coverage gate and the end-to-end socket suites
 
 ## Security notes

@@ -43,6 +43,7 @@ The server must be running too — see the root README.
 
 ```bash
 bun run lint
+bun run check:contrast  # every palette pair against WCAG AA
 bun run test            # vitest run
 bun run test:watch
 bun run test:coverage
