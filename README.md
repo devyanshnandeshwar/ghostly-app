@@ -58,7 +58,7 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 | `server/` | The API. `src/routes` + `src/controllers` for HTTP, `src/sockets` for matchmaking and chat, `src/services` for the domain logic, `src/models` for Mongoose schemas. |
 | `scripts/verify-local.sh` | End-to-end check against a locally running server. |
 | `.github/workflows/` | CI (`ci.yml`), commit linting (`commits.yml`) and the nightly backup (`backup.yml`). |
-| `docs/` | Design specs. `DOCUMENTATION.md` covers architecture and the trust model in more depth; `TODO.md` holds the manual test checklist. |
+| `docs/` | Design specs. `DOCUMENTATION.md` covers architecture and the trust model in more depth; the manual test checklist is printed at the end of `scripts/verify-local.sh`. |
 
 ---
 
@@ -104,7 +104,7 @@ cp server/.env.example server/.env
 | `SESSION_SECRET` | Signs session tokens. Generate with `openssl rand -hex 32`. Rotating it signs out every user |
 | `ADMIN_TOKEN` | Bearer token for `/api/v1/admin/*`. Unset means those routes return 503 (they fail closed) |
 | `MIN_VERIFY_CONFIDENCE` | Minimum model confidence to grant verified status. Defaults to `0.85` |
-| `REPORT_RETENTION_DAYS` | How long abuse reports are kept before a TTL index expires them. Defaults to `365`; `0` keeps them indefinitely |
+| `REPORT_RETENTION_DAYS` | How long abuse reports are kept before a TTL index expires them. Defaults to `365`; `0` keeps them indefinitely. A policy choice rather than a technical one — 365 comfortably outlasts the 30-day session TTL, but the number is yours to set |
 | `TRUSTED_PROXY_HOPS` | Only needed off Render/Cloudflare: the hop count for the `X-Forwarded-For` fallback |
 
 **In production the server refuses to boot** if `SESSION_SECRET` is the default
@@ -235,8 +235,8 @@ window to prove two users who just chatted are not immediately paired again.
 Set `VERIFY_SLOW=0` to have `verify-local.sh` skip it.
 
 Two things no script can check, because they need a human: **webcam verification
-with a real face**, and the UI in an actual browser. `TODO.md` keeps the manual
-checklist.
+with a real face**, and the UI in an actual browser. `verify-local.sh` prints the
+checklist for both when it finishes.
 
 ---
 
