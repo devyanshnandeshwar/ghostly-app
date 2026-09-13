@@ -145,7 +145,7 @@ sequenceDiagram
     end
 ```
 
-Two users who have been matched are never paired again; each session remembers its last 200 partners. A proposed change — allow re-matching, but never with someone you reported — is specified in `docs/superpowers/specs/2026-09-10-rematch-after-conversation-design.md` and not yet implemented.
+Two users who have been matched are never paired again; each session remembers its last 200 partners.
 
 Skipping a partner (`next-match`) starts a 5-second cooldown. Gender-filtered searches draw on a quota of 5 per rolling 24 hours, held in Redis so it survives a restart; searching for "Any" is free.
 

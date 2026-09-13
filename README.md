@@ -27,7 +27,7 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 - **Gender-Based Matching**: Users can choose to match specifically with Male, Female, or Any gender. Gender-filtered matches are limited to **5 per rolling 24 hours**; "Any" is unlimited.
 - **Verification Required**: Matchmaking is gated on verification, a confirmed age and an active account — anyone missing one cannot join the queue.
 - **Skip Cooldown**: Skipping a match blocks the next search for 5 seconds.
-- **Past Match Avoidance**: Once two users have been paired, they are not matched with each other again (the history is capped at the last 200 partners). A proposed change to allow re-matching, except with someone you reported, is in [docs/superpowers/specs](docs/superpowers/specs/2026-09-10-rematch-after-conversation-design.md) and is not yet implemented.
+- **Past Match Avoidance**: Once two users have been paired, they are not matched with each other again (the history is capped at the last 200 partners).
 
 ### Moderation
 
@@ -56,9 +56,8 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 | --- | --- |
 | `client/` | The React SPA. `src/components` holds the screens (landing, age gate, verify, profile, chat), `src/lib` the classifier and crypto, `public/` the ML models. |
 | `server/` | The API. `src/routes` + `src/controllers` for HTTP, `src/sockets` for matchmaking and chat, `src/services` for the domain logic, `src/models` for Mongoose schemas. |
-| `scripts/verify-local.sh` | End-to-end check against a locally running server. |
 | `.github/workflows/` | CI (`ci.yml`), commit linting (`commits.yml`) and the nightly backup (`backup.yml`). |
-| `docs/` | Design specs. `DOCUMENTATION.md` covers architecture and the trust model in more depth; the manual test checklist is printed at the end of `scripts/verify-local.sh`. |
+| `DOCUMENTATION.md` | Architecture, the trust model and the operational flows, in more depth than this file. |
 
 ---
 
@@ -211,32 +210,65 @@ only the ones a test imports) and must be raised as component tests land.
 
 ### End-to-end checks
 
-```bash
-./scripts/verify-local.sh              # start Mongo + Redis + the API, then run every check
-./scripts/verify-local.sh --no-build   # against an already-running server on :5000
-```
-
-This exercises the API end to end: dependency and service health, session
-tokens (including forged and unsigned ones), the admin API failing closed,
-verification claim validation, and the full socket layer — matchmaking, ECDH
-key exchange, ciphertext relay, room authorisation and queue cleanup.
-
-The socket suites can also be run on their own against a running server. They
-default to port 3000, so pass the URL explicitly, and they write fixtures
-through the `ghostly-mongo` container:
+The socket suites drive a real server: matchmaking, ECDH key exchange,
+ciphertext relay, room authorisation and queue cleanup. Start the datastores
+and the API first (`docker compose up -d`, then `cd server && bun run dev`),
+then:
 
 ```bash
 VERIFY_BASE=http://localhost:5000 bun server/scripts/verify-e2e.mjs
 VERIFY_BASE=http://localhost:5000 bun server/scripts/verify-rematch.mjs  # ~40s
 ```
 
-`verify-rematch.mjs` is slower because it has to wait out the session-cache
-window to prove two users who just chatted are not immediately paired again.
-Set `VERIFY_SLOW=0` to have `verify-local.sh` skip it.
+They default to port 3000, so pass `VERIFY_BASE` explicitly. Both seed their
+fixtures through the `ghostly-mongo` container, so compose has to be up, and
+`VERIFY_MONGO_DB` must name the same database as the server's `MONGO_URI` — a
+mismatch fails silently, with the fixtures written where the server is not
+looking. `verify-rematch.mjs` is the slower one because it waits out the
+session-cache window to prove two users who just chatted are not immediately
+paired again.
 
-Two things no script can check, because they need a human: **webcam verification
-with a real face**, and the UI in an actual browser. `verify-local.sh` prints the
-checklist for both when it finishes.
+### Manual checklist
+
+Two things no script can check, because they need a human: **webcam
+verification with a real face**, and the UI in an actual browser. Run the
+client (`cd client && bun run dev`) and open http://localhost:5173.
+
+- [ ] Clear localStorage for the site first. Old `deviceId` keys are dead, so
+      you get a fresh session — which is what every existing user sees on deploy.
+- [ ] Complete a real webcam verification. A good capture should verify; a poor
+      one should show a readable message, not a generic failure.
+- [ ] Network tab during capture: the body is JSON and **no image is uploaded**.
+      This is the headline privacy claim — confirm it yourself.
+- [ ] Block `*/face-api/*` and capture: a readable "could not read that frame"
+      message, and the user can retry rather than being stuck.
+
+Face framing gate (a client-side pre-check; the server decision is unchanged):
+
+- [ ] The capture button stays disabled until a single well-framed face is in
+      the oval, and the oval turns green when it unlocks.
+- [ ] Fail-open, model blocked: block `*/mediapipe/*` and reload. The button
+      must be **enabled**, with no hint pill at all.
+- [ ] Fail-open, escape hatch: stand back until it reads "Move a little closer"
+      and wait ~8s. The button enables and reads "Capture anyway".
+- [ ] Two people in frame reads "Only you should be in frame" — including when
+      the second person is outside the visible crop but still in the raw stream.
+- [ ] Resize across the `sm` breakpoint (640px) while framed. The verdict must
+      not change: the container is 0.75 aspect below it and 0.92 above.
+- [ ] A portrait phone and a landscape webcam both reach ready at arm's length.
+      They crop on opposite axes, so test both if you can.
+- [ ] Throttle to Fast 3G and walk the funnel from the landing page. The wasm
+      should already be cached by the preload, so the camera is usable at once.
+- [ ] Dev console: exactly one `[useFaceFraming] detector ready` per camera
+      start, even under StrictMode's double mount.
+- [ ] A gated capture still returns verified/gender/userHash and lands you in
+      matchmaking.
+- [ ] Open a second browser or private window, verify both, and chat. The
+      lock/encryption indicator should appear for both sides.
+- [ ] The typing indicator appears once and clears about 3s after you stop,
+      rather than flickering per keystroke.
+- [ ] Hit Next/Skip several times and confirm you are never left waiting on a
+      partner who never responds.
 
 ---
 

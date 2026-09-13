@@ -2,8 +2,9 @@
  * Socket-level end-to-end checks: matchmaking, E2EE key exchange, message
  * relay, room authorization, and queue cleanup.
  *
- * Run through scripts/verify-local.sh, which brings the stack up first.
- * Requires socket.io-client, so it runs from the server package.
+ * Needs a server already running (docker compose up -d, then bun src/server.ts)
+ * and the ghostly-mongo container for fixtures. Requires socket.io-client, so
+ * it runs from the server package.
  */
 import { io } from "socket.io-client";
 import { execSync } from "child_process";
