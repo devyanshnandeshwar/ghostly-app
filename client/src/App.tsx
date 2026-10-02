@@ -5,7 +5,6 @@ import { preloadFaceFraming } from "./hooks/useFaceFraming";
 import { loadGenderClassifier } from "./lib/genderClassifier";
 import { useSession } from "./context/SessionContext";
 import { useMatch } from "./context/MatchContext";
-import { AgeGate } from "./components/AgeGate";
 import { LandingPage } from "./components/LandingPage";
 import { Navbar } from "./components/Navbar";
 import { HomeCard } from "./components/HomeCard";
@@ -26,23 +25,21 @@ function App() {
   const [profileComplete, setProfileComplete] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [ageConfirmed, setAgeConfirmed] = useState(false);
 
-  // Warmed at the profile step rather than on leaving the landing page.
+  // Warmed at the profile step, never on the landing page.
   //
-  // The models are ~11.7MB. Preloading them for everyone who clicked "start"
-  // meant paying that for visitors who bounced before verification ever came
-  // up -- bandwidth that is metered on the free tier and comes out of the same
-  // monthly allowance that serves the app itself.
+  // The models are ~11.7MB. Preloading them for every visitor meant paying that
+  // for people who bounced before verification ever came up -- bandwidth that
+  // is metered on the free tier and comes out of the same monthly allowance
+  // that serves the app itself.
   //
-  // The funnel is Landing -> AgeGate -> ProfileSetup -> Verify, so starting at
-  // the profile step still buys a whole step of warm-up while only paying for
-  // users who are actually heading there. Both are idempotent and swallow
-  // their own errors, so a failure of either leaves the flow working.
-  // Derived here rather than from needsProfile, which is computed below the
-  // early returns and so is not available to a hook.
-  const headingToVerification =
-    (ageConfirmed || Boolean(session?.ageConfirmed)) && !session?.isVerified;
+  // The funnel is Landing -> ProfileSetup -> Verify, so leaving the landing
+  // page is the start of the profile step: that still buys a whole step of
+  // warm-up while only paying for users who are actually heading there. Both
+  // are idempotent and swallow their own errors, so a failure of either leaves
+  // the flow working. Derived here rather than from needsProfile, which is
+  // computed below the early returns and so is not available to a hook.
+  const headingToVerification = !showLanding && Boolean(session) && !session?.isVerified;
 
   useEffect(() => {
     if (headingToVerification) {
@@ -110,12 +107,9 @@ function App() {
     );
   }
 
-  // Ordered so the age declaration comes before anything else asks for a
-  // camera or a persona.
-  const needsAge = !ageConfirmed && !session.ageConfirmed;
   const needsProfile =
     editingProfile || (!profileComplete && (!session.nickname || session.nickname === "Anonymous"));
-  const needsVerify = !needsAge && !needsProfile && !verified && !session.isVerified;
+  const needsVerify = !needsProfile && !verified && !session.isVerified;
   const inChat = status === "matched" && !!roomId;
 
   const goHome = () => {
@@ -143,16 +137,7 @@ function App() {
           inChat ? "max-w-2xl" : "max-w-md"
         }`}
       >
-        {needsAge ? (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-400">
-            <AgeGate
-              onConfirmed={async () => {
-                await refreshSession();
-                setAgeConfirmed(true);
-              }}
-            />
-          </div>
-        ) : needsProfile ? (
+        {needsProfile ? (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-400">
             {!editingProfile && <OnboardingSteps current={0} />}
             <Suspense fallback={<CardSkeleton />}>

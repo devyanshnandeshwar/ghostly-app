@@ -74,9 +74,8 @@ const strayPresenceKeys = () =>
 /**
  * Creates a session ready to enter the queue.
  *
- * join-queue gates on three things now: a confirmed age, verification, and an
- * account status of "active". Setting only isVerified leaves the age gate
- * closed and every match attempt fails with "Please confirm your age".
+ * join-queue gates on verification and an account status of "active", so both
+ * are set directly rather than going through the camera flow.
  */
 async function makeVerifiedSession(gender, nickname) {
     const session = await api("/api/v1/session/init");
@@ -84,7 +83,7 @@ async function makeVerifiedSession(gender, nickname) {
         `docker exec ghostly-mongo mongosh ${MONGO_DB} --quiet --eval ` +
         `'db.usersessions.updateOne({_id:ObjectId("${session._id}")},` +
         `{$set:{isVerified:true,gender:"${gender}",preference:"any",nickname:"${nickname}",` +
-        `status:"active",ageConfirmedAt:new Date(),birthDate:new Date("1990-01-01")}});'`
+        `status:"active"}});'`
     );
     return session;
 }

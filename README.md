@@ -11,10 +11,6 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 - **Ephemeral Sessions**: Sessions are anonymous and carry no personal details. They are stored server-side so a returning user keeps their nickname and verified status, and expire automatically 30 days after their last activity. A session that never verifies is kept for only 6 hours.
 - **Revocable**: `POST /api/v1/session/logout` invalidates one session's token without touching anyone else's.
 
-### Age Gate
-
-- Users declare a date of birth before they can match, and must be **18 or over**. This is a self-declaration — a statement of terms, not identity verification.
-
 ### On-Device Gender Classification
 
 - **Runs in the browser**: MediaPipe's BlazeFace finds the face and gates the capture button until you are well framed; face-api's age/gender net then classifies the crop. Both models are served from this origin, so no third party is contacted.
@@ -54,7 +50,7 @@ Ghostly is an anonymous chat application that pairs users for real-time conversa
 
 | Path | What lives there |
 | --- | --- |
-| `client/` | The React SPA. `src/components` holds the screens (landing, age gate, verify, profile, chat), `src/lib` the classifier and crypto, `public/` the ML models. |
+| `client/` | The React SPA. `src/components` holds the screens (landing, profile, verify, chat), `src/lib` the classifier and crypto, `public/` the ML models. |
 | `server/` | The API. `src/routes` + `src/controllers` for HTTP, `src/sockets` for matchmaking and chat, `src/services` for the domain logic, `src/models` for Mongoose schemas. |
 | `.github/workflows/` | CI (`ci.yml`), commit linting (`commits.yml`) and the nightly backup (`backup.yml`). |
 | `DOCUMENTATION.md` | Architecture, the trust model and the operational flows, in more depth than this file. |
@@ -165,7 +161,6 @@ compatibility alias for clients cached before versioning existed.
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/session/init` | — | Create or resume an anonymous session; returns a signed token |
-| `POST` | `/session/age` | session | Declare a date of birth (must be 18+) |
 | `POST` | `/session/logout` | session | Revoke this session's token |
 | `POST` | `/verify/gender` | session | Record the on-device classification result |
 | `POST` | `/profile/update` | session | Set nickname and match preference |

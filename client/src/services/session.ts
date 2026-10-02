@@ -11,8 +11,6 @@ export interface Session {
     /** Lifetime filtered matches. Analytics only -- not the quota. */
     dailyFilterUsage?: number;
     lastFilterUsageDate?: string;
-    /** Whether the self-declared age gate has been passed. Gates matchmaking. */
-    ageConfirmed?: boolean;
     /** Filtered matches spent in the current rolling window. This is the quota. */
     filtersUsedToday?: number;
     /** Filtered matches still available. Sent by the server; never computed here. */

@@ -17,9 +17,9 @@ const mongo = (js) =>
 
 async function verified(gender, nickname) {
     const s = await post("/api/v1/session/init");
-    // join-queue gates on a confirmed age and an active status as well as
-    // verification; setting only isVerified leaves every match attempt refused.
-    mongo(`db.usersessions.updateOne({_id:ObjectId("${s._id}")},{$set:{isVerified:true,gender:"${gender}",preference:"any",nickname:"${nickname}",status:"active",ageConfirmedAt:new Date(),birthDate:new Date("1990-01-01")}});`);
+    // join-queue gates on an active status as well as verification; setting
+    // only isVerified leaves every match attempt refused.
+    mongo(`db.usersessions.updateOne({_id:ObjectId("${s._id}")},{$set:{isVerified:true,gender:"${gender}",preference:"any",nickname:"${nickname}",status:"active"}});`);
     return s;
 }
 

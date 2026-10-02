@@ -16,7 +16,6 @@ import type { UpdateQuery } from "mongoose";
 const CACHED_FIELDS = new Set<string>([
     "isVerified",
     "status",
-    "ageConfirmedAt",
     "gender",
     "preference",
     "nickname",

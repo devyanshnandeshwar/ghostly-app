@@ -79,11 +79,7 @@ Ghostly has no accounts, but it still needs a stable identity to hold a verified
 - **Transport**: The client keeps the token in `localStorage` (`client/src/utils/auth.ts`) and sends it as `Authorization: Bearer …` on HTTP and as `auth.token` in the Socket.IO handshake.
 - **Expiry**: A token is valid for at most 30 days from issue, regardless of activity. The session document itself expires 30 days after last activity — or after only **6 hours** if it never verifies, so minting junk sessions cannot fill the database.
 - **Revocation**: `POST /api/v1/session/logout` bumps the session's `tokenVersion`, which invalidates that session's outstanding tokens and nobody else's. Rotating `SESSION_SECRET` signs out every user at once, so it is a last resort.
-- **No PII**: Sessions carry a nickname, a gender claim, a match preference and a date of birth — no name, email or image.
-
-### Age gate
-
-Before matching, users declare a date of birth via `POST /api/v1/session/age` and must be **18 or over**. A refused declaration is not recorded, so the account is not left half-gated. This is a self-declaration — a statement of terms that gives the report flow something to act on — not identity verification.
+- **No PII**: Sessions carry a nickname, a gender claim, and a match preference — no name, email or image.
 
 ### Reporting & Abuse Prevention
 

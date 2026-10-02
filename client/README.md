@@ -1,7 +1,7 @@
 # Ghostly Client
 
-The frontend for Ghostly: a React SPA built with Vite. It handles the age gate,
-on-device verification, profile setup, matchmaking and end-to-end encrypted chat.
+The frontend for Ghostly: a React SPA built with Vite. It handles profile setup,
+on-device verification, matchmaking and end-to-end encrypted chat.
 
 ## Tech Stack
 
@@ -63,8 +63,8 @@ typechecks `vite.config.ts` against a type with no `test` key.
 
 ## Project Structure
 
-- `src/App.tsx` — the screen flow: landing → age gate → verify → profile → chat. `Verify`, `Chat` and `ProfileSetup` are lazy-loaded
-- `src/components/` — the screens and their pieces (`AgeGate`, `Verify`, `ProfileSetup`, `Chat`, `ReportModal`, …); `ui/` holds vendored shadcn primitives
+- `src/App.tsx` — the screen flow: landing → profile → verify → chat. `Verify`, `Chat` and `ProfileSetup` are lazy-loaded
+- `src/components/` — the screens and their pieces (`Verify`, `ProfileSetup`, `Chat`, `ReportModal`, …); `ui/` holds vendored shadcn primitives
 - `src/context/` — session, socket and match state
 - `src/hooks/` — `useChatHook` (encrypted chat), `useFaceFraming` (MediaPipe capture gate), `useCountdown`
 - `src/lib/` — the gender classifier and error helpers

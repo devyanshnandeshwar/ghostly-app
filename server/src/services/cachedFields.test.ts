@@ -21,8 +21,7 @@ describe("updates that must invalidate the cached view", () => {
         ["gender", { gender: "female" }],
         ["the gender filter", { preference: "male" }],
         ["a nickname", { nickname: "Ada" }],
-        ["a bio", { bio: "hello" }],
-        ["the age declaration", { ageConfirmedAt: new Date() }]
+        ["a bio", { bio: "hello" }]
     ])("%s", (_label, update) => {
         expect(touchesCachedField(update)).toBe(true);
     });
