@@ -33,12 +33,12 @@ function Hero({ onStart }: { onStart: () => void }) {
         </Badge>
 
         {/* Two lines at every breakpoint: the type scale is sized to the column. */}
-        <h1 className="text-[2rem] font-semibold leading-[1.08] delay-75 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-5xl lg:text-[3.4rem]">
+        <h1 className="text-2xl font-semibold delay-75 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-3xl lg:text-4xl">
           <span className="block">Talk to someone new.</span>
           <span className="block text-muted-foreground">Stay a stranger.</span>
         </h1>
 
-        <p className="mt-5 max-w-[46ch] text-base leading-relaxed text-muted-foreground delay-150 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-lg">
+        <p className="mt-5 max-w-[46ch] text-base text-muted-foreground delay-150 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-md">
           Every person here passed a camera check, and every message is encrypted in your
           browser before it leaves.
         </p>
@@ -77,15 +77,15 @@ function ChatPreview() {
               <Ghost className="size-4.5" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium leading-tight">Stranger</p>
-              <p className="flex items-center gap-1.5 text-xs leading-tight text-success">
+              <p className="text-sm font-medium">Stranger</p>
+              <p className="flex items-center gap-1.5 text-xs text-success">
                 <ShieldCheck className="size-3" />
                 Encrypted in transit
               </p>
             </div>
           </div>
 
-          <div className="space-y-1.5 px-4 py-5">
+          <div className="space-y-2 px-4 py-5">
             <ChatBubble from="them" text="ok be honest, what time did you actually go to sleep" />
             <ChatBubble from="me" text="4:10am" />
             <ChatBubble from="me" startsRun={false} text="i was reading about deep sea fish, no regrets" />
@@ -124,7 +124,7 @@ function HowItWorks() {
   return (
     <section className="border-t bg-secondary/30">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16 lg:py-24">
-        <h2 className="reveal max-w-[16ch] text-3xl font-semibold sm:text-4xl lg:self-center">
+        <h2 className="reveal max-w-[16ch] text-xl font-semibold sm:text-2xl lg:self-center">
           Three things stand between you and a conversation.
         </h2>
 
@@ -139,8 +139,8 @@ function HowItWorks() {
                 {i + 1}
               </span>
               <div className="pt-0.5">
-                <h3 className="text-lg font-medium">{step.title}</h3>
-                <p className="mt-1.5 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
+                <h3 className="text-md font-medium">{step.title}</h3>
+                <p className="mt-2 max-w-[52ch] text-sm text-muted-foreground">
                   {step.body}
                 </p>
               </div>
@@ -156,7 +156,7 @@ function HowItWorks() {
 function Privacy() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:py-28">
-      <h2 className="reveal max-w-[20ch] text-3xl font-semibold sm:text-4xl">
+      <h2 className="reveal max-w-[20ch] text-xl font-semibold sm:text-2xl">
         What we keep is nothing.
       </h2>
 
@@ -168,15 +168,15 @@ function Privacy() {
           />
           <div className="relative">
             <KeyRound className="size-6 text-primary" />
-            <h3 className="mt-5 text-xl font-medium">Encrypted before it leaves your browser</h3>
-            <p className="mt-2 max-w-[46ch] text-sm leading-relaxed text-muted-foreground">
+            <h3 className="mt-5 text-md font-medium">Encrypted before it leaves your browser</h3>
+            <p className="mt-2 max-w-[46ch] text-sm text-muted-foreground">
               Both sides derive a shared key and the server only ever relays ciphertext. Keys
               travel through the server, so this stops anyone listening on the network rather
               than the server itself.
             </p>
             <p
               aria-hidden="true"
-              className="mt-6 rounded-lg border bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground"
+              className="mt-6 rounded-lg border bg-background/70 p-3 font-mono text-xs text-muted-foreground"
             >
               browser <span className="text-primary">encrypt</span> server <span className="text-primary">decrypt</span> browser
               <br />
@@ -192,8 +192,8 @@ function Privacy() {
           />
           <div className="relative">
             <ScanFace className="size-6 text-primary" />
-            <h3 className="mt-5 text-lg font-medium">Frames are never written down</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            <h3 className="mt-5 text-md font-medium">Frames are never written down</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
               The verification image is processed in memory and dropped. It never touches a
               disk, and no one but the model sees it.
             </p>
@@ -202,8 +202,8 @@ function Privacy() {
 
         <article className="reveal rounded-xl border bg-card p-6 elevation-low lg:col-span-2">
           <Timer className="size-6 text-primary" />
-          <h3 className="mt-5 text-lg font-medium">Sessions expire on their own</h3>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          <h3 className="mt-5 text-md font-medium">Sessions expire on their own</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
             A session holds a nickname and a verified flag, and is deleted 30 days after you
             last use it.
           </p>
@@ -216,8 +216,8 @@ function Privacy() {
           />
           <div className="relative">
             <UserRoundX className="size-6 text-primary" />
-            <h3 className="mt-5 text-lg font-medium">You will not be paired twice</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            <h3 className="mt-5 text-md font-medium">You will not be paired twice</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
               Once a conversation ends, that person is out of your pool for good. Report
               anyone who crosses a line.
             </p>
@@ -232,7 +232,7 @@ function ClosingCta({ onStart }: { onStart: () => void }) {
   return (
     <section className="border-t bg-secondary/30">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 py-20 text-center sm:px-6 lg:py-24">
-        <h2 className="reveal max-w-[18ch] text-3xl font-semibold sm:text-4xl">
+        <h2 className="reveal max-w-[18ch] text-xl font-semibold sm:text-2xl">
           Someone is waiting on the other side.
         </h2>
         <Button size="lg" onClick={onStart} className="h-12 gap-2 px-7 text-base">

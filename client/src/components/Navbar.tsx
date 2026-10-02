@@ -32,7 +32,7 @@ export function Navbar({ onLogoClick }: NavbarProps) {
           <span className="grid size-8 place-items-center rounded-lg bg-primary/12">
             <Ghost className="size-4.5 text-primary" />
           </span>
-          <span className="text-lg font-semibold tracking-tight">Ghostly</span>
+          <span className="text-md font-semibold tracking-tight">Ghostly</span>
           <span className="sr-only">Back to start</span>
         </button>
 

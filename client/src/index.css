@@ -12,6 +12,53 @@
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
 
+  /*
+    Type scale, fitted to Geist rather than rounded to tidy numbers.
+
+    Geist's ascent above the cap height (1.005em - 0.71em) equals its descent
+    (0.295em), so CSS places the capitals dead centre in any line box. Two
+    rules follow from that:
+
+    - Line heights step on a 4px grid, so stacked lines keep one rhythm.
+    - Each size is nudged until its cap height is a whole number of pixels,
+      which puts the cap line and the baseline on whole pixels too, instead of
+      smearing across two.
+
+    The names describe scale, not role: a page title and a featured stat can
+    both be `lg`. Nothing outside this list exists, so a one-off size has to
+    be argued into the scale first. scripts/check-type-scale.mjs re-checks
+    every step against the font's metrics.
+  */
+  --text-*: initial;
+  --leading-*: initial;
+
+  /* 12px is the one size kept for legibility over a perfect fit (0.26px). */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  /* A pixel above the browser default; also keeps iOS from zooming inputs. */
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.5rem;
+  --text-md: 1.25rem;
+  --text-md--line-height: 1.75rem;
+  --text-md--letter-spacing: -0.01em;
+  --text-lg: 1.40625rem;
+  --text-lg--line-height: 1.75rem;
+  --text-lg--letter-spacing: -0.015em;
+  --text-xl: 1.75rem;
+  --text-xl--line-height: 2rem;
+  --text-xl--letter-spacing: -0.02em;
+  --text-2xl: 2.125rem;
+  --text-2xl--line-height: 2.5rem;
+  --text-2xl--letter-spacing: -0.025em;
+  --text-3xl: 2.8125rem;
+  --text-3xl--line-height: 3rem;
+  --text-3xl--letter-spacing: -0.03em;
+  --text-4xl: 3.5rem;
+  --text-4xl--line-height: 3.75rem;
+  --text-4xl--letter-spacing: -0.035em;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -150,14 +197,16 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-foreground text-base font-sans antialiased;
     /* Keeps the layout from shifting sideways when a dialog locks scrolling. */
     scrollbar-gutter: stable;
   }
 
-  /* Headings tighten as they grow; body text stays readable. */
+  /*
+    Tracking comes with the size token, not the tag, so an h2 set small reads
+    like small text and a large stat tightens like a heading.
+  */
   h1, h2, h3 {
-    @apply tracking-tight;
     text-wrap: balance;
   }
 
@@ -217,6 +266,17 @@
     background-color: var(--card);
     backdrop-filter: none;
   }
+}
+
+/*
+  Pins an icon to the first line of the text beside it. The box is one line
+  tall and the SVG draws its glyph centred inside, and because Geist's caps are
+  centred in the line too, the icon lines up with the cap height at any size
+  and any number of lines. Pair it with a width: `w-4 icon-lh`.
+*/
+@utility icon-lh {
+  height: 1lh;
+  flex-shrink: 0;
 }
 
 @utility elevation-low {

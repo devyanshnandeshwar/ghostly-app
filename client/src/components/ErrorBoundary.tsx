@@ -43,7 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     <Ghost className="size-8 text-destructive" />
                 </div>
                 <div className="space-y-2">
-                    <h1 className="text-2xl font-semibold">Something broke</h1>
+                    <h1 className="text-lg font-semibold">Something broke</h1>
                     <p className="max-w-md text-muted-foreground">
                         That is our fault, not yours. Reloading usually clears it — your
                         conversation is not stored, so nothing is lost.

@@ -75,10 +75,10 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border bg-card p-6 elevation-mid sm:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold">
+        <h1 className="text-lg font-semibold">
           {onCancel ? "Edit your persona" : "Create your persona"}
         </h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">
           Pick something that is not your real name. You can change it later.
         </p>
       </div>
@@ -152,7 +152,7 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
                   onClick={() => setPreference(option.value)}
                   title={isLocked ? "You have used today's gender filters" : undefined}
                   className={cn(
-                    "flex flex-col items-center gap-0.5 rounded-lg border px-2 py-3 text-sm transition-all duration-150",
+                    "flex flex-col items-center gap-1 rounded-lg border px-2 py-3 text-sm transition-all duration-150",
                     "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                     isSelected
                       ? "border-primary bg-primary/10 font-medium text-primary"
@@ -164,7 +164,7 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
                     {isLocked && <Lock className="size-3" />}
                     {option.label}
                   </span>
-                  <span className="text-[11px] font-normal text-muted-foreground">
+                  <span className="text-xs font-normal text-muted-foreground">
                     {isLocked ? "Spent" : option.note}
                   </span>
                 </button>
@@ -173,7 +173,7 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
           </div>
 
           {filtersLocked && (
-            <p className="text-xs leading-relaxed text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Your gender filters are spent. Matching with anyone is still open, and the
               filters come back 24 hours after you first used one.
             </p>

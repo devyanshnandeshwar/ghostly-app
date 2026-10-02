@@ -57,9 +57,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                         className="glass-panel pointer-events-auto flex max-w-md items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
                     >
                         {toast.tone === "warning" ? (
-                            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                            <AlertTriangle className="w-4 icon-lh text-destructive" />
                         ) : (
-                            <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                            <Info className="w-4 icon-lh text-muted-foreground" />
                         )}
                         <span className="min-w-0 flex-1">{toast.message}</span>
                         <button
@@ -68,7 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                                 setToasts((current) => current.filter((t) => t.id !== toast.id))
                             }
                             aria-label="Dismiss"
-                            className="mt-0.5 shrink-0 rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                            className="flex icon-lh items-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
                         >
                             <X className="size-3.5" />
                         </button>

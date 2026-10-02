@@ -78,7 +78,7 @@ function App() {
             <p
               role="status"
               aria-live="polite"
-              className="mt-6 text-center text-sm leading-relaxed text-muted-foreground animate-in fade-in duration-500"
+              className="mt-6 text-center text-sm text-muted-foreground animate-in fade-in duration-500"
             >
               Waking the server up — it sleeps when nobody is around.
               <span className="mt-1 block text-xs">This takes up to a minute.</span>
@@ -96,7 +96,7 @@ function App() {
           <Ghost className="size-8 text-destructive" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold">We could not start a session</h1>
+          <h1 className="text-lg font-semibold">We could not start a session</h1>
           <p className="max-w-md text-muted-foreground">
             The server did not answer, or you have made too many requests in a short window.
             Waiting a moment and retrying usually fixes it.

@@ -174,11 +174,11 @@ export function Verify({ onVerified }: VerifyProps) {
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border bg-card p-6 elevation-mid sm:p-8">
       <div className="mb-5">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+        <h1 className="flex items-center gap-2 text-lg font-semibold">
           <ScanFace className="size-6 text-primary" />
           Verify with your camera
         </h1>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">
           Your camera frame is read on this device and never uploaded. Only the result
           is sent, and the image is discarded straight after.
         </p>
@@ -230,7 +230,7 @@ export function Verify({ onVerified }: VerifyProps) {
               >
                 {FRAMING_HINTS[framing.status]}
                 {framing.lowLight && (
-                  <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                  <span className="block text-xs font-normal text-muted-foreground">
                     More light would help
                   </span>
                 )}
@@ -252,7 +252,7 @@ export function Verify({ onVerified }: VerifyProps) {
           <div className="absolute inset-0 grid place-items-center bg-card animate-in fade-in duration-300">
             <div className="flex flex-col items-center gap-2 text-success">
               <CheckCircle2 className="size-12 animate-settle" />
-              <p className="text-lg font-semibold capitalize">Verified as {gender}</p>
+              <p className="text-md font-semibold capitalize">Verified as {gender}</p>
               <p className="text-sm text-muted-foreground">Taking you to matching</p>
             </div>
           </div>

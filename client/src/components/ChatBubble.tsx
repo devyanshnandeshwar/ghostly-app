@@ -20,7 +20,7 @@ export function ChatBubble({ text, from, startsRun = true, className }: ChatBubb
     <div className={cn("flex w-full", mine ? "justify-end" : "justify-start", className)}>
       <div
         className={cn(
-          "max-w-[80%] px-3.5 py-2.5 text-sm leading-relaxed wrap-break-word elevation-low",
+          "max-w-[80%] px-3.5 py-2.5 text-sm wrap-break-word elevation-low",
           mine
             ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
             : "bg-secondary text-secondary-foreground rounded-2xl rounded-bl-sm",

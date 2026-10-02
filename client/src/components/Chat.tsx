@@ -83,14 +83,14 @@ export default function Chat({ roomId, partner }: ChatProps) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold leading-tight">
+          <h2 className="truncate text-sm font-semibold">
             {partner?.nickname || "Stranger"}
           </h2>
           {partner?.bio ? (
-            <p className="truncate text-xs leading-tight text-muted-foreground">{partner.bio}</p>
+            <p className="truncate text-xs text-muted-foreground">{partner.bio}</p>
           ) : (
             <p
-              className={`flex items-center gap-1 text-xs leading-tight ${
+              className={`flex items-center gap-1 text-xs ${
                 isEncrypted ? "text-success" : "text-muted-foreground"
               }`}
             >
@@ -144,7 +144,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
         <div
           aria-live="polite"
           aria-relevant="additions"
-          className={`flex flex-1 flex-col gap-1.5 p-4 ${
+          className={`flex flex-1 flex-col gap-2 p-4 ${
             messages.length === 0 ? "justify-center" : "justify-end"
           }`}
         >
@@ -265,7 +265,7 @@ function EmptyThread({ nickname, isEncrypted }: { nickname?: string; isEncrypted
             ? `You are connected to ${nickname || "a stranger"}`
             : "Setting up encryption"}
         </p>
-        <p className="mt-1 max-w-[38ch] text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1 max-w-[38ch] text-sm text-muted-foreground">
           {isEncrypted
             ? "Say something. Neither of you knows who the other is, and none of this is kept."
             : "Keys are being exchanged. The composer unlocks in a second."}

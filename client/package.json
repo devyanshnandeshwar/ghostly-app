@@ -8,6 +8,7 @@
     "build": "bun scripts/check-deploy-config.mjs && tsc -b && vite build",
     "lint": "eslint .",
     "check:contrast": "bun scripts/check-contrast.mjs",
+    "check:type": "bun scripts/check-type-scale.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

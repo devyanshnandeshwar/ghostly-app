@@ -42,10 +42,10 @@ export function HomeCard({ status, onFindMatch, onCancel, onEditProfile }: HomeC
         </span>
       </div>
 
-      <h1 className="mt-6 text-2xl font-semibold">
+      <h1 className="mt-6 text-lg font-semibold">
         {waiting ? "Looking for someone" : `Hey, ${session?.nickname || "there"}`}
       </h1>
-      <p className="mx-auto mt-2 max-w-[34ch] text-sm leading-relaxed text-muted-foreground">
+      <p className="mx-auto mt-2 max-w-[34ch] text-sm text-muted-foreground">
         {waiting
           ? "You are in the queue. This stays open until someone matching your filter appears."
           : filterSpent
