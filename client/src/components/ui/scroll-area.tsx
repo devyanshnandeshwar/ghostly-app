@@ -23,7 +23,7 @@ function ScrollArea({
         // that wrapper a full-height flex column lets a child use `flex-1` to
         // fill the viewport, which is what anchors the chat thread to the bottom
         // and centres empty states.
-        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1 [&>div]:!flex [&>div]:!min-h-full [&>div]:!flex-col"
+        className="focus-visible:ring-ring size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1 [&>div]:!flex [&>div]:!min-h-full [&>div]:!flex-col"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

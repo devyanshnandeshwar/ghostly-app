@@ -33,8 +33,8 @@ export function HomeCard({ status, onFindMatch, onCancel, onEditProfile }: HomeC
       <div className="relative mx-auto grid size-40 place-items-center">
         {waiting && (
           <>
-            <span className="absolute size-40 animate-ping rounded-full bg-primary/15 [animation-duration:2.4s]" />
-            <span className="absolute size-32 rounded-full border-2 border-primary/40 border-t-transparent motion-safe:animate-spin [animation-duration:1.8s]" />
+            <span className="absolute size-40 animate-ping rounded-full bg-primary/15 [animation-duration:var(--duration-very-slow,500ms)]" />
+            <span className="absolute size-32 rounded-full border-2 border-primary/40 border-t-transparent motion-safe:animate-spin [animation-duration:var(--duration-slow,400ms)]" />
           </>
         )}
         <span className="relative grid size-24 place-items-center rounded-full border bg-background elevation-low">
@@ -74,7 +74,7 @@ export function HomeCard({ status, onFindMatch, onCancel, onEditProfile }: HomeC
             <Button
               variant="ghost"
               onClick={onEditProfile}
-              className="h-9 w-full gap-2 text-muted-foreground"
+              className="min-h-11 w-full gap-2 text-muted-foreground"
             >
               <SlidersHorizontal className="size-4" />
               Edit persona and filter
@@ -106,7 +106,7 @@ function WaitingElapsed() {
   const remainder = seconds % 60;
 
   return (
-    <p aria-live="polite" className="font-mono text-sm tabular-nums text-muted-foreground">
+    <p className="font-mono text-sm tabular-nums text-muted-foreground">
       {minutes}:{remainder.toString().padStart(2, "0")} waiting
     </p>
   );

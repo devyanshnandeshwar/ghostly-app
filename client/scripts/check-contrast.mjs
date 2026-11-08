@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-/*
- * Checks every foreground/background pair in the palette against WCAG AA.
- * The values here mirror the custom properties in src/index.css; if you change
- * a token there, change it here and re-run: node scripts/check-contrast.mjs
- */
+import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
 
 function oklchToSrgb(L, C, hDeg) {
   const h = (hDeg * Math.PI) / 180;
@@ -33,31 +30,27 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-const light = {
-  background: [0.985, 0.003, 250],
-  foreground: [0.21, 0.02, 265],
-  card: [1, 0, 0],
-  primary: [0.52, 0.115, 215],
-  "primary-foreground": [1, 0, 0],
-  secondary: [0.955, 0.006, 250],
-  "muted-foreground": [0.5, 0.02, 260],
-  destructive: [0.52, 0.2, 25],
-  "destructive-foreground": [1, 0, 0],
-  success: [0.52, 0.13, 155],
-};
+const css = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
 
-const dark = {
-  background: [0.165, 0.014, 265],
-  foreground: [0.945, 0.005, 250],
-  card: [0.205, 0.015, 265],
-  primary: [0.8, 0.115, 205],
-  "primary-foreground": [0.2, 0.03, 240],
-  secondary: [0.27, 0.016, 262],
-  "muted-foreground": [0.7, 0.018, 258],
-  destructive: [0.7, 0.17, 22],
-  "destructive-foreground": [0.18, 0.04, 25],
-  success: [0.78, 0.14, 160],
-};
+function palette(selector) {
+  const block = css.split(selector + " {")[1]?.split("\n}")[0];
+  assert.ok(block, "Missing palette: " + selector);
+  const tokens = Object.fromEntries([...block.matchAll(/--([\w-]+): oklch\(([^)]+)\);/g)].map(([, name, value]) => {
+    const [color, alpha = "1"] = value.split(" / ");
+    const [l, c, h] = color.split(" ").map(Number);
+    return [name, { rgb: oklchToSrgb(l, c, h), alpha: parseFloat(alpha) / (alpha.endsWith("%") ? 100 : 1) }];
+  }));
+  const result = Object.fromEntries(Object.entries(tokens).map(([name, { rgb, alpha }]) =>
+    [name, rgb.map((channel, i) => channel * alpha + tokens.card.rgb[i] * (1 - alpha))]
+  ));
+  result["primary-tint"] = result.primary.map((channel, i) => channel * 0.1 + result.card[i] * 0.9);
+  result["primary-hover"] = result.primary.map((channel, i) => channel * 0.95 + result.card[i] * 0.05);
+  return result;
+}
+
+assert.equal(contrast([1, 1, 1], [0, 0, 0]), 21);
+const light = palette(":root");
+const dark = palette(".dark");
 
 // [foreground, background, minimum ratio]
 const pairs = [
@@ -74,6 +67,11 @@ const pairs = [
   ["destructive", "background", 4.5],
   ["success", "background", 4.5],
   ["success", "card", 4.5],
+  ["input", "card", 3],
+  ["input", "background", 3],
+  ["ring", "card", 3],
+  ["foreground", "primary-tint", 4.5],
+  ["primary-foreground", "primary-hover", 4.5],
 ];
 
 let failed = 0;
@@ -83,7 +81,7 @@ for (const [mode, tokens] of [
 ]) {
   console.log(`\n${mode}`);
   for (const [fg, bg, min] of pairs) {
-    const ratio = contrast(oklchToSrgb(...tokens[fg]), oklchToSrgb(...tokens[bg]));
+    const ratio = contrast(tokens[fg], tokens[bg]);
     const ok = ratio >= min;
     if (!ok) failed++;
     console.log(`  ${ok ? "PASS" : "FAIL"}  ${`${fg} on ${bg}`.padEnd(40)} ${ratio.toFixed(2)} (min ${min})`);

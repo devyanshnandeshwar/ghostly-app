@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, Info, X } from "lucide-react";
 
@@ -34,9 +34,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             return next.slice(-3);
         });
 
-        setTimeout(() => {
-            setToasts((current) => current.filter((toast) => toast.id !== id));
-        }, DISMISS_AFTER_MS);
     }, []);
 
     const api = useMemo(() => ({ notify }), [notify]);
@@ -48,33 +45,42 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 // polite, not assertive: these are status messages, and an
                 // assertive region interrupts whatever a screen reader is saying.
                 aria-live="polite"
-                className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4"
+                className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[100] flex flex-col items-center gap-2 px-4"
             >
                 {toasts.map((toast) => (
-                    <div
+                    <ToastNotice
                         key={toast.id}
-                        role="status"
-                        className="glass-panel pointer-events-auto flex max-w-md items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
-                    >
-                        {toast.tone === "warning" ? (
-                            <AlertTriangle className="w-4 icon-lh text-destructive" />
-                        ) : (
-                            <Info className="w-4 icon-lh text-muted-foreground" />
-                        )}
-                        <span className="min-w-0 flex-1">{toast.message}</span>
-                        <button
-                            type="button"
-                            onClick={() =>
-                                setToasts((current) => current.filter((t) => t.id !== toast.id))
-                            }
-                            aria-label="Dismiss"
-                            className="flex icon-lh items-center rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                        >
-                            <X className="size-3.5" />
-                        </button>
-                    </div>
+                        toast={toast}
+                        onDismiss={() => setToasts((current) => current.filter((t) => t.id !== toast.id))}
+                    />
                 ))}
             </div>
         </ToastContext.Provider>
+    );
+}
+
+function ToastNotice({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+    const [paused, setPaused] = useState(false);
+    useEffect(() => {
+        if (toast.tone === "warning" || paused) return;
+        const timer = setTimeout(onDismiss, DISMISS_AFTER_MS);
+        return () => clearTimeout(timer);
+    }, [toast.tone, paused, onDismiss]);
+
+    return (
+        <div
+            role="status"
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+            onFocusCapture={() => setPaused(true)}
+            onBlurCapture={() => setPaused(false)}
+            className="pointer-events-auto flex w-full max-w-md items-center gap-2.5 rounded-lg border bg-card px-3.5 py-2.5 text-sm text-card-foreground animate-in fade-in slide-in-from-bottom-2 duration-300"
+        >
+            {toast.tone === "warning" ? <AlertTriangle className="w-4 icon-lh text-destructive" /> : <Info className="w-4 icon-lh text-muted-foreground" />}
+            <span className="min-w-0 flex-1 self-center wrap-break-word">{toast.message}</span>
+            <button type="button" onClick={onDismiss} aria-label="Dismiss" className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring">
+                <X className="size-4" />
+            </button>
+        </div>
     );
 }

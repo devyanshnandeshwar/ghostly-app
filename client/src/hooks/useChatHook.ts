@@ -13,6 +13,8 @@ export function useChat(roomId: string | null) {
     const [input, setInput] = useState("");
     const [isPartnerTyping, setIsPartnerTyping] = useState(false);
     const [isEncrypted, setIsEncrypted] = useState(false);
+    const [encryptionError, setEncryptionError] = useState<string | null>(null);
+    const [sendError, setSendError] = useState<string | null>(null);
     
     // E2EE State
     const [keyPair, setKeyPair] = useState<CryptoKeyPair | null>(null);
@@ -34,6 +36,8 @@ export function useChat(roomId: string | null) {
         setIsEncrypted(false);
         setSharedKey(null);
         setPartnerKey(null);
+        setEncryptionError(null);
+        setSendError(null);
     }
 
     useEffect(() => {
@@ -59,6 +63,7 @@ export function useChat(roomId: string | null) {
                 console.log("[E2EE] Keys generated & sent");
              } catch (err) {
                  console.error("[E2EE] Setup failed:", err);
+                 setEncryptionError("Encryption could not start. Leave this conversation and try another match.");
              }
         };
 
@@ -104,14 +109,22 @@ export function useChat(roomId: string | null) {
                 const shared = await deriveSharedKey(keyPair.privateKey, partnerKeyImported);
                 setSharedKey(shared);
                 setIsEncrypted(true);
+                setEncryptionError(null);
                 console.log("[E2EE] Secure connection established 🔒");
             } catch (err) {
                 console.error("[E2EE] Shared key derivation failed:", err);
+                setEncryptionError("The encryption keys did not work. Leave this conversation and try another match.");
             }
         };
 
         derive();
     }, [keyPair, partnerKey]);
+
+    useEffect(() => {
+        if (!roomId || isEncrypted) return;
+        const timer = setTimeout(() => setEncryptionError((current) => current ?? "Encryption is taking longer than expected. You can wait or try another match."), 15000);
+        return () => clearTimeout(timer);
+    }, [roomId, isEncrypted]);
 
     // Message Handler Effect (depends on sharedKey)
     useEffect(() => {
@@ -191,11 +204,16 @@ export function useChat(roomId: string | null) {
     }, [roomId]);
 
     const sendMessage = async () => {
+        if (!socket?.connected) {
+            setSendError("You are offline. Your draft is still here; reconnect before trying again.");
+            return;
+        }
         if (!roomId || !input.trim() || !sharedKey || !socket) return;
 
         console.log("[useChat] Encrypting & Sending...");
         
         try {
+            setSendError(null);
             const { ciphertext, iv } = await encryptMessage(input, sharedKey);
             
             socket.emit("send-message", {
@@ -212,15 +230,24 @@ export function useChat(roomId: string | null) {
             setInput("");
         } catch (err) {
             console.error("[E2EE] Send failed:", err);
+            setSendError("The message could not be encrypted. Your draft is still here; try sending again.");
         }
     };
     
     // Deliberately does not refresh the session: the Navbar badge counts reports
     // filed AGAINST this user, and reporting someone else does not change it.
-    const reportUser = (reason: string, description?: string) => {
-        if (socket) {
-            socket.emit("report-user", { reason, description });
-            console.log("[useChat] Reported user for:", reason);
+    const reportUser = async (reason: string, description?: string) => {
+        if (!socket?.connected) throw new Error("You are offline. Reconnect before sending your report.");
+        let result: unknown;
+        try {
+            result = await socket.timeout(10000).emitWithAck("report-user", { reason, description });
+        } catch {
+            throw new Error("The server did not confirm your report. Your note is still here; check your connection before retrying.");
+        }
+        if (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true) {
+            const message = result && typeof result === "object" && "error" in result && typeof result.error === "string"
+                ? result.error : "Could not submit that report. Please try again.";
+            throw new Error(message);
         }
     };
     
@@ -245,6 +272,8 @@ export function useChat(roomId: string | null) {
         sendMessage,
         reportUser,
         isPartnerTyping,
-        isEncrypted
+        isEncrypted,
+        encryptionError,
+        sendError
     };
 }

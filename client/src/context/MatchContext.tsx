@@ -114,9 +114,13 @@ export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
 
         // Emitted when an event exceeds its per-socket budget.
-        const onRateLimited = () => {
+        const onRateLimited = ({ event }: { event: string }) => {
             notify("You are going a bit fast. Give it a moment.", "warning");
-            setStatus("idle");
+            if (event === "join-queue" || event === "next-match") setStatus("idle");
+        };
+        const onReportSubmitted = () => {
+            notify("Report received. The conversation has ended.");
+            resetMatch();
         };
 
         // socket.io stops retrying after reconnectionAttempts, and nothing used
@@ -125,8 +129,7 @@ export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // than derived in an effect body, so the state update sits in a
         // callback where it belongs.
         const onReconnectFailed = () => {
-            notify("Lost connection. Reload the page to reconnect.", "warning");
-            setStatus("idle");
+            setStatus((current) => current === "waiting" ? "idle" : current);
         };
 
         socket.on("queue-waiting", onQueueWaiting);
@@ -134,6 +137,7 @@ export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         socket.io.on("reconnect_failed", onReconnectFailed);
         socket.on("matched", onMatched);
         socket.on("queue-error", onQueueError);
+        socket.on("report-submitted", onReportSubmitted);
         socket.on("queue-cooldown", onQueueCooldown);
         socket.on("partner-left", onPartnerLeft);
         socket.on("partner-skipped", onPartnerSkipped);
@@ -144,6 +148,7 @@ export const MatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             socket.io.off("reconnect_failed", onReconnectFailed);
             socket.off("matched", onMatched);
             socket.off("queue-error", onQueueError);
+            socket.off("report-submitted", onReportSubmitted);
             socket.off("queue-cooldown", onQueueCooldown);
             socket.off("partner-left", onPartnerLeft);
             socket.off("partner-skipped", onPartnerSkipped);

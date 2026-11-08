@@ -20,6 +20,7 @@ export interface Session {
     /** Seconds until the allowance resets, 0 when no window is open. */
     filtersResetInSeconds?: number;
     reportsAgainst?: number;
+    reportReasons?: string[];
     userHash?: string;
 }
 

@@ -6,6 +6,7 @@ interface ChatBubbleProps {
   /** First bubble of a run gets the full corner; the rest tuck in under it. */
   startsRun?: boolean;
   className?: string;
+  senderName?: string;
 }
 
 /*
@@ -13,7 +14,7 @@ interface ChatBubbleProps {
  * real traffic and the landing page renders them for its preview, so the
  * preview cannot drift away from the product.
  */
-export function ChatBubble({ text, from, startsRun = true, className }: ChatBubbleProps) {
+export function ChatBubble({ text, from, startsRun = true, className, senderName = "Stranger" }: ChatBubbleProps) {
   const mine = from === "me";
 
   return (
@@ -27,6 +28,7 @@ export function ChatBubble({ text, from, startsRun = true, className }: ChatBubb
           !startsRun && (mine ? "rounded-tr-sm" : "rounded-tl-sm")
         )}
       >
+        <span className="sr-only">{mine ? "You" : senderName}: </span>
         {text}
       </div>
     </div>

@@ -20,7 +20,6 @@ export function Verify({ onVerified }: VerifyProps) {
   const [error, setError] = useState<{ kind: "camera" | "frame"; message: string } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const captureButtonRef = useRef<HTMLButtonElement>(null);
   const hintId = useId();
 
   // Deliberately not `&& !loading`: keeping the loop alive during upload means
@@ -28,14 +27,6 @@ export function Verify({ onVerified }: VerifyProps) {
   // guidance again. The glass spinner covers the overlay meanwhile.
   const framing = useFaceFraming(videoRef, !!stream && !gender);
   const showGate = framing.status !== "idle" && framing.status !== "unavailable";
-
-  // Take keyboard and screen-reader users to the action the moment it unlocks.
-  // Deliberately not an auto-capture: the copy above promises "one frame goes to
-  // the model", and verifyLimiter allows only 5 attempts a minute, so firing on a
-  // marginal ready state could strand someone behind a rate-limit message.
-  useEffect(() => {
-    if (framing.canCapture && stream && !gender) captureButtonRef.current?.focus();
-  }, [framing.canCapture, stream, gender]);
 
   // Cleanup stream on unmount
   useEffect(() => {
@@ -184,6 +175,12 @@ export function Verify({ onVerified }: VerifyProps) {
         </p>
       </div>
 
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {gender ? `Verified as ${gender}. Taking you to matching.`
+          : loading ? stream ? "Checking the frame" : "Opening camera"
+          : stream && showGate ? `${FRAMING_HINTS[framing.status]}${framing.lowLight ? ". More light would help" : ""}` : ""}
+      </p>
+
       <div className="relative mx-auto aspect-3/4 max-h-[26rem] w-full overflow-hidden rounded-xl border bg-secondary">
         <video
           ref={videoRef}
@@ -224,9 +221,7 @@ export function Verify({ onVerified }: VerifyProps) {
             {showGate && !loading && (
               <div
                 id={hintId}
-                role="status"
-                aria-live="polite"
-                className="glass-panel absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border px-4 py-2 text-center text-sm font-medium animate-in fade-in slide-in-from-bottom-2 duration-300"
+                className="glass-panel absolute bottom-4 inset-x-3 z-10 rounded-lg border px-3 py-2 text-center text-sm font-medium animate-in fade-in slide-in-from-bottom-2 duration-300"
               >
                 {FRAMING_HINTS[framing.status]}
                 {framing.lowLight && (
@@ -292,7 +287,6 @@ export function Verify({ onVerified }: VerifyProps) {
 
         {stream && !gender && (
           <Button
-            ref={captureButtonRef}
             onClick={() => void handleCapture()}
             disabled={loading || !framing.canCapture}
             aria-describedby={showGate ? hintId : undefined}

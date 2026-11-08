@@ -13,19 +13,23 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { errorText } from "@/lib/apiError";
 
 interface ReportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (reason: string, description: string) => void;
+  onSubmit: (reason: string, description: string) => void | Promise<void>;
+  reasons: readonly string[];
 }
 
-const REASONS = ["Harassment", "Hate Speech", "Sexual Content", "Spam/Bot", "Other"];
 const DESCRIPTION_LIMIT = 200;
 
-export default function ReportModal({ isOpen, onClose, onSubmit }: ReportModalProps) {
-  const [reason, setReason] = useState(REASONS[0]);
+export default function ReportModal({ isOpen, onClose, onSubmit, reasons }: ReportModalProps) {
+  const [reason, setReason] = useState("");
   const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Radix unmounts DialogContent's children, but this component stays mounted,
   // so its state survived every close. Report someone for Harassment with a
@@ -41,18 +45,28 @@ export default function ReportModal({ isOpen, onClose, onSubmit }: ReportModalPr
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
     if (isOpen) {
-      setReason(REASONS[0]);
+      setReason("");
       setDescription("");
+      setError(null);
     }
   }
 
-  const handleSubmit = () => {
-    onSubmit(reason, description);
+  const handleSubmit = async () => {
+    if (submitting || !reason) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(reason, description);
+    } catch (err) {
+      setError(errorText(err, "Could not submit that report. Please try again."));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && !submitting && onClose()}>
+      <DialogContent className="sm:max-w-md" showCloseButton={!submitting}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-destructive" />
@@ -67,8 +81,8 @@ export default function ReportModal({ isOpen, onClose, onSubmit }: ReportModalPr
         <div className="space-y-5 py-2">
           <fieldset className="space-y-2">
             <legend className="mb-2 text-sm font-medium">What happened</legend>
-            <RadioGroup value={reason} onValueChange={setReason} className="gap-1">
-              {REASONS.map((r) => (
+            <RadioGroup value={reason} onValueChange={setReason} disabled={submitting} className="gap-1" aria-label="What happened">
+              {reasons.map((r) => (
                 <Label
                   key={r}
                   htmlFor={r}
@@ -91,21 +105,26 @@ export default function ReportModal({ isOpen, onClose, onSubmit }: ReportModalPr
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               maxLength={DESCRIPTION_LIMIT}
+              disabled={submitting}
+              aria-describedby="report-description-hint"
               placeholder="What they said or did"
               className="min-h-20 resize-none"
             />
-            <p className="text-right font-mono text-xs tabular-nums text-muted-foreground">
-              {description.length}/{DESCRIPTION_LIMIT}
+            <p id="report-description-hint" className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+              <span className="sr-only">Optional. </span>{description.length}/{DESCRIPTION_LIMIT}<span className="sr-only"> characters</span>
             </p>
           </div>
         </div>
 
+        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+        {submitting && <p role="status" className="text-sm text-muted-foreground">Waiting for the server to confirm your report.</p>}
+
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={handleSubmit}>
-            Send report
+          <Button variant="destructive" onClick={() => void handleSubmit()} disabled={submitting || !reason}>
+            {submitting ? "Sending report" : "Send report"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ReportModal from "./ReportModal";
 
@@ -12,11 +12,12 @@ import ReportModal from "./ReportModal";
 
 function setup(onSubmit = vi.fn()) {
     const onClose = vi.fn();
-    const view = render(<ReportModal isOpen={false} onClose={onClose} onSubmit={onSubmit} />);
+    const props = { onClose, onSubmit, reasons: ["Harassment", "Abusive Behavior", "Spam", "Underage", "Other"] };
+    const view = render(<ReportModal isOpen={false} {...props} />);
     const open = () =>
-        view.rerender(<ReportModal isOpen onClose={onClose} onSubmit={onSubmit} />);
+        view.rerender(<ReportModal isOpen {...props} />);
     const close = () =>
-        view.rerender(<ReportModal isOpen={false} onClose={onClose} onSubmit={onSubmit} />);
+        view.rerender(<ReportModal isOpen={false} {...props} />);
     return { onSubmit, onClose, open, close };
 }
 
@@ -44,7 +45,7 @@ describe("state between reports", () => {
         close();
         open();
 
-        expect(screen.getByRole("radio", { name: /harassment/i })).toBeChecked();
+        expect(screen.getByRole("radio", { name: /harassment/i })).not.toBeChecked();
     });
 
     test("a note survives while the dialog stays open", async () => {
@@ -65,21 +66,40 @@ describe("submitting", () => {
         const { open } = setup(onSubmit);
 
         open();
-        await user.click(screen.getByRole("radio", { name: /hate speech/i }));
+        await user.click(screen.getByRole("radio", { name: /abusive behavior/i }));
         await user.type(screen.getByRole("textbox"), "slurs");
         await user.click(screen.getByRole("button", { name: /send report/i }));
 
-        expect(onSubmit).toHaveBeenCalledWith("Hate Speech", "slurs");
+        expect(onSubmit).toHaveBeenCalledWith("Abusive Behavior", "slurs");
     });
 
-    test("defaults to the first reason when the user picks none", async () => {
-        const user = userEvent.setup();
+    test("requires a deliberate reason selection", () => {
         const onSubmit = vi.fn();
         const { open } = setup(onSubmit);
 
         open();
-        await user.click(screen.getByRole("button", { name: /send report/i }));
+        expect(screen.getByRole("button", { name: /send report/i })).toBeDisabled();
+    });
 
-        expect(onSubmit).toHaveBeenCalledWith("Harassment", "");
+    test("retains the note and permits retry when server submission fails", async () => {
+        const user = userEvent.setup();
+        const { open } = setup(vi.fn().mockRejectedValue(new Error("Could not submit. Try again.")));
+        open();
+        await user.click(screen.getByRole("radio", { name: "Harassment" }));
+        await user.type(screen.getByRole("textbox"), "keep this note");
+        await user.click(screen.getByRole("button", { name: /send report/i }));
+        await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/Try again/));
+        expect(screen.getByRole("textbox")).toHaveValue("keep this note");
+        expect(screen.getByRole("button", { name: /send report/i })).toBeEnabled();
+    });
+
+    test("prevents duplicate submission while waiting for acknowledgement", async () => {
+        const user = userEvent.setup();
+        const { open } = setup(vi.fn().mockReturnValue(new Promise(() => {})));
+        open();
+        await user.click(screen.getByRole("radio", { name: "Harassment" }));
+        await user.click(screen.getByRole("button", { name: /send report/i }));
+        expect(screen.getByRole("button", { name: /sending/i })).toBeDisabled();
+        expect(screen.getByRole("textbox")).toBeDisabled();
     });
 });

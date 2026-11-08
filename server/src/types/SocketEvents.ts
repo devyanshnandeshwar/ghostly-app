@@ -1,3 +1,5 @@
+export type ReportResult = { ok: true } | { ok: false; error: string };
+
 export interface ServerToClientEvents {
     // Auth
     "auth-error": (message: string) => void;
@@ -15,6 +17,7 @@ export interface ServerToClientEvents {
     "receive-message": (data: { message: string; iv: string }) => void;
     "partner-typing": (isTyping: boolean) => void;
     "partner-disconnected": () => void;
+    "report-submitted": () => void;
     
     // E2EE
     "exchange-key": (key: JsonWebKey) => void;
@@ -29,7 +32,7 @@ export interface ClientToServerEvents {
     "join-room": (roomId: string) => void;
     "send-message": (data: { roomId: string; message: string; iv: string }) => void;
     "typing": (data: { roomId: string; isTyping: boolean }) => void;
-    "report-user": (data: { reason: string; description?: string }) => void;
+    "report-user": (data: { reason: string; description?: string }, acknowledge?: (result: ReportResult) => void) => void;
     
     // E2EE
     "exchange-key": (data: { roomId: string; key: JsonWebKey }) => void;

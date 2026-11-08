@@ -45,8 +45,8 @@ export class ErrorBoundary extends Component<Props, State> {
                 <div className="space-y-2">
                     <h1 className="text-lg font-semibold">Something broke</h1>
                     <p className="max-w-md text-muted-foreground">
-                        That is our fault, not yours. Reloading usually clears it — your
-                        conversation is not stored, so nothing is lost.
+                        Reloading may clear the error. It ends your current conversation
+                        and clears its messages, which cannot be recovered.
                     </p>
                 </div>
                 <Button onClick={() => window.location.reload()} size="lg" className="gap-2">

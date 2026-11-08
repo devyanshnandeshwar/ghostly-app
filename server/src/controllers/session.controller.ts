@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { createSession, getSessionByDeviceId, touchLastActive, revokeSession } from "../services/session.service";
 import { issueSessionToken, verifySessionToken } from "../utils/token";
 import { getFilterUsage } from "../services/quota.service";
+import { REPORT_REASONS } from "../models/Report";
 
 export const init = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -65,7 +66,8 @@ export const init = async (req: Request, res: Response, next: NextFunction) => {
             // Lifetime total, for analytics. Not the quota -- see filtersUsedToday.
             dailyFilterUsage: session.dailyFilterUsage,
             lastFilterUsageDate: session.lastFilterUsageDate,
-            reportsAgainst: session.reportsAgainst
+            reportsAgainst: session.reportsAgainst,
+            reportReasons: REPORT_REASONS
         });
     } catch (error) {
         next(error);

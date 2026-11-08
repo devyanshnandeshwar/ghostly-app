@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Flag, Ghost, LockKeyhole, LogOut, Send, ShieldCheck } from "lucide-react";
 
 import { useChat } from "../hooks/useChatHook";
 import { useMatch } from "../context/MatchContext";
+import { useSession } from "../context/SessionContext";
 import ReportModal from "./ReportModal";
 import { ChatBubble } from "./ChatBubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ChatProps {
   roomId: string;
@@ -15,52 +17,34 @@ interface ChatProps {
 }
 
 export default function Chat({ roomId, partner }: ChatProps) {
-  const { messages, input, setInput, sendMessage, reportUser, isPartnerTyping, isEncrypted } =
+  const { messages, input, setInput, sendMessage, reportUser, isPartnerTyping, isEncrypted, encryptionError, sendError } =
     useChat(roomId);
   const { leaveMatch, nextMatch } = useMatch();
-  const [reported, setReported] = useState(false);
+  const { session } = useSession();
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom whenever messages change
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, isPartnerTyping]);
-
-  // Held so it can be cleared. This is not an edge case: a successful report
-  // makes the server emit queue-error, which sends MatchContext to "idle" and
-  // unmounts Chat -- always inside these 2.6 seconds.
-  const reportedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (reportedTimer.current) clearTimeout(reportedTimer.current);
-    };
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const followingRef = useRef(true);
+  const previousScrollTop = useRef(0);
+  const [following, setFollowing] = useState(true);
+  const scrollToLatest = useCallback(() => {
+    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
   }, []);
 
-  const handleReportSubmit = (reason: string, description: string) => {
-    reportUser(reason, description);
+  // Incoming activity must not displace someone reading older messages.
+  useEffect(() => {
+    if (followingRef.current) scrollToLatest();
+  }, [messages, isPartnerTyping, scrollToLatest]);
+
+  const handleReportSubmit = async (reason: string, description: string) => {
+    await reportUser(reason, description);
     setIsReportModalOpen(false);
-    setReported(true);
-    if (reportedTimer.current) clearTimeout(reportedTimer.current);
-    reportedTimer.current = setTimeout(() => setReported(false), 2600);
   };
 
   return (
-    <div className="relative mx-auto flex h-[calc(100dvh-7rem)] min-h-100 w-full max-w-2xl flex-col overflow-hidden rounded-xl border bg-card elevation-high sm:h-[calc(100dvh-9rem)]">
-      {reported && (
-        <div
-          role="status"
-          className="glass-panel absolute left-1/2 top-4 z-50 -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300"
-        >
-          Report sent. Moderation will review it.
-        </div>
-      )}
-
+    <div className="relative mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-x-hidden overflow-y-auto rounded-xl border bg-card">
       {/* Header */}
-      <header className="glass z-20 flex items-center gap-3 border-b px-3 py-3 sm:px-4">
+      <header className="z-20 grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b bg-card px-3 py-3 sm:flex sm:px-4">
         <div className="relative shrink-0">
           <span className="grid size-10 place-items-center rounded-full bg-primary/12 text-primary">
             <Ghost className="size-5" />
@@ -83,11 +67,11 @@ export default function Chat({ roomId, partner }: ChatProps) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold">
+          <h1 className="wrap-break-word text-sm font-semibold">
             {partner?.nickname || "Stranger"}
-          </h2>
+          </h1>
           {partner?.bio ? (
-            <p className="truncate text-xs text-muted-foreground">{partner.bio}</p>
+            <p className="wrap-break-word text-xs text-muted-foreground">{partner.bio}</p>
           ) : (
             <p
               className={`flex items-center gap-1 text-xs ${
@@ -109,7 +93,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="col-span-2 flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:ml-auto">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -127,21 +111,34 @@ export default function Chat({ roomId, partner }: ChatProps) {
             onClick={leaveMatch}
             className="gap-1.5 text-muted-foreground"
             title="Leave the chat and go back"
+            aria-label="Leave the chat and go back"
           >
             <LogOut className="size-4" />
-            <span className="hidden sm:inline">Leave</span>
+            <span>Leave</span>
           </Button>
 
-          <Button variant="secondary" size="sm" onClick={nextMatch} className="gap-1.5" title="Skip to the next person">
-            <span className="hidden sm:inline">Next</span>
+          <Button variant="secondary" size="sm" onClick={nextMatch} className="gap-1.5" title="Skip to the next person" aria-label="Skip to the next person">
+            <span>Next</span>
             <ArrowRight className="size-4" />
           </Button>
         </div>
       </header>
 
       {/* Messages */}
-      <ScrollArea className="flex-1">
+      <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1" onScrollCapture={(event) => {
+        const viewport = event.target;
+        if (!(viewport instanceof HTMLElement)) return;
+        const nearBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 48;
+        // Programmatic downward scrolling must not disable following mid-animation.
+        if (nearBottom || viewport.scrollTop < previousScrollTop.current) {
+          followingRef.current = nearBottom;
+          setFollowing(nearBottom);
+        }
+        previousScrollTop.current = viewport.scrollTop;
+      }}>
         <div
+          role="log"
+          aria-label="Conversation messages"
           aria-live="polite"
           aria-relevant="additions"
           className={`flex flex-1 flex-col gap-2 p-4 ${
@@ -187,6 +184,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
                   text={msg.text}
                   from={msg.sender === "me" ? "me" : "them"}
                   startsRun={startsRun}
+                  senderName={partner?.nickname || "Stranger"}
                   className={`animate-in fade-in slide-in-from-bottom-1 duration-300 ${
                     startsRun ? "mt-2 first:mt-0" : ""
                   }`}
@@ -206,17 +204,32 @@ export default function Chat({ roomId, partner }: ChatProps) {
             </div>
           )}
 
-          <div ref={scrollRef} className="h-px" />
         </div>
       </ScrollArea>
+
+      {!following && <Button variant="secondary" className="m-2 self-center" onClick={() => {
+        followingRef.current = true;
+        setFollowing(true);
+        scrollToLatest();
+      }}>Jump to latest messages</Button>}
+
+      {encryptionError && <Alert variant="destructive" className="shrink-0 rounded-none border-x-0"><AlertDescription>
+        {encryptionError}
+        <Button variant="outline" onClick={nextMatch}>Find another match</Button>
+      </AlertDescription></Alert>}
+      {sendError && <p role="alert" className="shrink-0 px-3 py-2 text-sm text-destructive">{sendError}</p>}
 
       {/* Composer */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (isEncrypted && input.trim()) sendMessage();
+          if (isEncrypted && input.trim()) {
+            followingRef.current = true;
+            setFollowing(true);
+            void sendMessage();
+          }
         }}
-        className="glass z-20 flex items-center gap-2 border-t p-3"
+        className="z-20 flex shrink-0 items-center gap-2 border-t bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <Input
           value={input}
@@ -224,7 +237,6 @@ export default function Chat({ roomId, partner }: ChatProps) {
           placeholder={isEncrypted ? "Message" : "Setting up encryption"}
           className="h-11 flex-1"
           aria-label="Message"
-          autoFocus
           autoComplete="off"
           disabled={!isEncrypted}
         />
@@ -243,6 +255,7 @@ export default function Chat({ roomId, partner }: ChatProps) {
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
         onSubmit={handleReportSubmit}
+        reasons={session?.reportReasons ?? ["Other"]}
       />
     </div>
   );
@@ -268,7 +281,7 @@ function EmptyThread({ nickname, isEncrypted }: { nickname?: string; isEncrypted
         <p className="mt-1 max-w-[38ch] text-sm text-muted-foreground">
           {isEncrypted
             ? "Say something. Neither of you knows who the other is, and none of this is kept."
-            : "Keys are being exchanged. The composer unlocks in a second."}
+            : "Keys are being exchanged. You can send messages once encryption is ready."}
         </p>
       </div>
     </div>

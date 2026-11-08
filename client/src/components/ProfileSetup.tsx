@@ -98,9 +98,10 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
             autoCapitalize="none"
             spellCheck={false}
             required
+            aria-describedby="nickname-hint"
           />
           <p id="nickname-hint" className="text-xs text-muted-foreground">
-            3 to 20 characters. Strangers see this and nothing else.
+            3 to 20 characters. Strangers see your nickname and optional bio.
           </p>
         </div>
 
@@ -116,15 +117,16 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
             className="min-h-24 resize-none"
             placeholder="here to talk about deep sea fish"
             maxLength={BIO_LIMIT}
+            aria-describedby="bio-hint"
           />
-          <p className="text-right font-mono text-xs tabular-nums text-muted-foreground">
-            {bio.length}/{BIO_LIMIT}
+          <p id="bio-hint" className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="sr-only">Optional. </span>{bio.length}/{BIO_LIMIT}<span className="sr-only"> characters</span>
           </p>
         </div>
 
         <fieldset className="space-y-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <legend className="text-sm font-medium">Match me with</legend>
+          <legend className="mb-2 flex w-full flex-wrap items-baseline justify-between gap-2">
+            <span className="text-sm font-medium">Match me with</span>
             {session?.filtersRemaining !== undefined && (
               <span
                 className={cn(
@@ -135,31 +137,35 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
                 {filtersLeft}/{filtersTotal} filters left
               </span>
             )}
-          </div>
+          </legend>
 
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Match me with">
+          <div className="grid grid-cols-3 gap-2">
             {PREFERENCES.map((option) => {
               const isLocked = option.value !== "any" && filtersLocked;
               const isSelected = preference === option.value;
 
               return (
-                <button
+                <label
                   key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isSelected}
-                  disabled={isLocked}
-                  onClick={() => setPreference(option.value)}
                   title={isLocked ? "You have used today's gender filters" : undefined}
                   className={cn(
-                    "flex flex-col items-center gap-1 rounded-lg border px-2 py-3 text-sm transition-all duration-150",
-                    "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                    "flex min-w-0 cursor-pointer flex-col items-center gap-1 rounded-lg border border-input px-2 py-3 text-sm transition-all duration-150",
+                    "has-focus-visible:ring-[3px] has-focus-visible:ring-ring",
                     isSelected
-                      ? "border-primary bg-primary/10 font-medium text-primary"
+                      ? "border-primary bg-primary/10 font-medium text-foreground"
                       : "text-foreground hover:bg-secondary",
                     isLocked && "cursor-not-allowed opacity-55 hover:bg-transparent"
                   )}
                 >
+                  <input
+                    type="radio"
+                    name="preference"
+                    value={option.value}
+                    checked={isSelected}
+                    disabled={isLocked}
+                    onChange={() => setPreference(option.value)}
+                    className="sr-only"
+                  />
                   <span className="flex items-center gap-1">
                     {isLocked && <Lock className="size-3" />}
                     {option.label}
@@ -167,7 +173,7 @@ export function ProfileSetup({ onComplete, onCancel }: ProfileSetupProps) {
                   <span className="text-xs font-normal text-muted-foreground">
                     {isLocked ? "Spent" : option.note}
                   </span>
-                </button>
+                </label>
               );
             })}
           </div>

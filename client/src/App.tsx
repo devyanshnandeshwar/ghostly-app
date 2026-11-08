@@ -1,16 +1,18 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Ghost, RotateCw } from "lucide-react";
 
 import { preloadFaceFraming } from "./hooks/useFaceFraming";
 import { loadGenderClassifier } from "./lib/genderClassifier";
 import { useSession } from "./context/SessionContext";
 import { useMatch } from "./context/MatchContext";
+import { useSocket } from "./context/SocketContext";
 import { LandingPage } from "./components/LandingPage";
 import { Navbar } from "./components/Navbar";
 import { HomeCard } from "./components/HomeCard";
 import { OnboardingSteps } from "./components/OnboardingSteps";
 import { CardSkeleton } from "./components/CardSkeleton";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Verify = lazy(() => import("./components/Verify").then((m) => ({ default: m.Verify })));
 const Chat = lazy(() => import("./components/Chat"));
@@ -21,10 +23,13 @@ const ProfileSetup = lazy(() =>
 function App() {
   const { loading, session, isColdStart, refreshSession } = useSession();
   const { findMatch, status, roomId, partner, cancelMatch } = useMatch();
+  const { connectionState } = useSocket();
   const [verified, setVerified] = useState(false);
   const [profileComplete, setProfileComplete] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const focusMain = useCallback((node: HTMLElement | null) => { node?.focus(); }, []);
 
   // Warmed at the profile step, never on the landing page.
   //
@@ -59,11 +64,27 @@ function App() {
     setEditingProfile(false);
   };
 
-  if (loading) {
+  const goHome = () => {
+    cancelMatch();
+    setShowLanding(true);
+  };
+
+  if (showLanding) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col overflow-x-clip bg-background text-foreground">
+        <Navbar onLogoClick={goHome} />
+        <main className="flex-1">
+          <LandingPage onStart={() => setShowLanding(false)} />
+        </main>
+      </div>
+    );
+  }
+
+  if (loading || retrying) {
     return (
       <div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
-        <Navbar />
-        <div className="mx-auto w-full max-w-md flex-1 px-4 py-10">
+        <Navbar onLogoClick={goHome} />
+        <main ref={focusMain} tabIndex={-1} aria-label="Starting your session" className="mx-auto w-full max-w-md flex-1 px-4 py-10 outline-none">
           <CardSkeleton />
           {/*
             The API sleeps after 15 minutes idle and takes about a minute to
@@ -81,14 +102,14 @@ function App() {
               <span className="mt-1 block text-xs">This takes up to a minute.</span>
             </p>
           )}
-        </div>
+        </main>
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-6 bg-background p-6 text-center text-foreground">
+      <main ref={focusMain} tabIndex={-1} aria-label="Session unavailable" className="flex min-h-[100dvh] flex-col items-center justify-center gap-6 bg-background p-6 text-center text-foreground outline-none">
         <div className="grid size-16 place-items-center rounded-full bg-destructive/10">
           <Ghost className="size-8 text-destructive" />
         </div>
@@ -99,11 +120,12 @@ function App() {
             Waiting a moment and retrying usually fixes it.
           </p>
         </div>
-        <Button onClick={() => window.location.reload()} size="lg" className="gap-2">
+        <Button onClick={async () => { setRetrying(true); try { await refreshSession(); } finally { setRetrying(false); } }} size="lg" className="gap-2">
           <RotateCw className="size-4" />
           Try again
         </Button>
-      </div>
+        <Button variant="ghost" onClick={goHome}>Back to start</Button>
+      </main>
     );
   }
 
@@ -112,31 +134,30 @@ function App() {
   const needsVerify = !needsProfile && !verified && !session.isVerified;
   const inChat = status === "matched" && !!roomId;
 
-  const goHome = () => {
-    cancelMatch();
-    setShowLanding(true);
-  };
-
-  if (showLanding) {
-    return (
-      <div className="flex min-h-[100dvh] flex-col overflow-x-clip bg-background text-foreground">
-        <Navbar onLogoClick={goHome} />
-        <main className="flex-1">
-          <LandingPage onStart={() => setShowLanding(false)} />
-        </main>
-      </div>
-    );
-  }
+  const screenName = needsProfile ? "Set up your persona" : needsVerify ? "Camera verification" : inChat ? "Conversation" : status === "waiting" ? "Finding a match" : "Find a match";
 
   return (
-    <div className="flex min-h-[100dvh] flex-col overflow-x-clip bg-background text-foreground">
+    <div className={`flex flex-col overflow-x-clip bg-background text-foreground ${inChat ? "h-dvh min-h-[40rem]" : "min-h-[100dvh]"}`}>
       <Navbar onLogoClick={goHome} />
 
       <main
-        className={`mx-auto flex w-full flex-1 flex-col justify-center px-4 py-6 sm:py-10 ${
-          inChat ? "max-w-2xl" : "max-w-md"
+        key={screenName}
+        ref={focusMain}
+        tabIndex={-1}
+        aria-label={screenName}
+        className={`mx-auto flex w-full min-h-0 flex-1 flex-col justify-center px-4 outline-none ${
+          inChat ? "max-w-2xl py-2 sm:py-4" : "max-w-md py-6 sm:py-10"
         }`}
       >
+        {session.isVerified && connectionState !== "connected" && (
+          <Alert className="mb-4 shrink-0" role={connectionState === "failed" ? "alert" : "status"}>
+            <AlertTitle>{connectionState === "failed" ? "Connection lost" : "Connecting to chat"}</AlertTitle>
+            <AlertDescription>
+              {connectionState === "failed" ? "Reload to reconnect. This ends any current conversation and clears its messages." : "Please wait while the chat connection opens."}
+              {connectionState === "failed" && <Button variant="outline" onClick={() => window.location.reload()}>Reload to reconnect</Button>}
+            </AlertDescription>
+          </Alert>
+        )}
         {needsProfile ? (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-400">
             {!editingProfile && <OnboardingSteps current={0} />}
@@ -155,7 +176,7 @@ function App() {
             </Suspense>
           </div>
         ) : inChat ? (
-          <div className="animate-in fade-in zoom-in-98 duration-300">
+          <div className="flex min-h-0 flex-1 flex-col animate-in fade-in zoom-in-98 duration-300">
             <Suspense fallback={<CardSkeleton />}>
               <Chat roomId={roomId!} partner={partner} />
             </Suspense>

@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "bounce-easing",
+        "value": "animate-bounce",
+        "files": [
+          "client/src/components/Chat.tsx"
+        ],
+        "createdAt": "2026-11-08T06:55:50.221Z",
+        "reason": "Agent: these three dots indicate that the chat partner is typing; conventional status feedback with an accompanying screen-reader label, not decorative bounce easing."
+      }
+    ]
+  }
+}

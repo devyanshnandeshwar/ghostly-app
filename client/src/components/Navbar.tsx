@@ -23,11 +23,11 @@ export function Navbar({ onLogoClick }: NavbarProps) {
 
   return (
     <header className="glass sticky top-0 z-50 w-full border-b">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 sm:px-6">
         <button
           type="button"
           onClick={onLogoClick}
-          className="flex items-center gap-2.5 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="flex min-h-11 items-center gap-2.5 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-[3px] focus-visible:ring-ring"
         >
           <span className="grid size-8 place-items-center rounded-lg bg-primary/12">
             <Ghost className="size-4.5 text-primary" />
@@ -36,7 +36,7 @@ export function Navbar({ onLogoClick }: NavbarProps) {
           <span className="sr-only">Back to start</span>
         </button>
 
-        <div className="ml-auto flex items-center gap-2">
+        {isLoggedIn && (session?.filtersRemaining !== undefined || reportCount > 0) && <div className="order-2 flex w-full min-w-0 flex-wrap items-center gap-2 sm:order-none sm:ml-auto sm:w-auto">
           {isLoggedIn && session?.filtersRemaining !== undefined && (
             <span
               title={
@@ -63,6 +63,7 @@ export function Navbar({ onLogoClick }: NavbarProps) {
           {isLoggedIn && reportCount > 0 && (
             <span
               title={`${reportCount} report${reportCount === 1 ? "" : "s"} filed against you`}
+              aria-label={`${reportCount} report${reportCount === 1 ? "" : "s"} filed against you`}
               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                 reportCount > 2
                   ? "bg-destructive text-destructive-foreground"
@@ -74,8 +75,8 @@ export function Navbar({ onLogoClick }: NavbarProps) {
             </span>
           )}
 
-          <ModeToggle />
-        </div>
+        </div>}
+        <div className="ml-auto"><ModeToggle /></div>
       </div>
     </header>
   );
