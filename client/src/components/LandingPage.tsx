@@ -1,6 +1,8 @@
 import { ArrowRight, Ghost, KeyRound, ScanFace, ShieldCheck, Timer, UserRoundX } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { ChatBubble } from "./ChatBubble";
+import GradientASCII from "./GradientASCII";
 
 interface LandingPageProps {
   onStart: () => void;
@@ -19,29 +21,45 @@ export function LandingPage({ onStart }: LandingPageProps) {
 
 /* Asymmetric split: message on the left, the actual product on the right. */
 function Hero({ onStart }: { onStart: () => void }) {
+  const { resolvedTheme } = useTheme();
+
   return (
-    <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-12 pb-20 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:pt-20 lg:pb-28">
-      <div>
-        <h1 className="text-2xl font-semibold delay-75 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-3xl lg:text-4xl">
-          <span className="block">Talk to someone new.</span>
-          <span className="block">Stay a stranger.</span>
-        </h1>
-
-        <p className="mt-5 max-w-[46ch] text-base text-muted-foreground delay-150 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-md">
-          Pick a nickname, complete the camera check, and meet someone new.
-          Messages are encrypted in your browser, and chat history is not saved.
-        </p>
-
-        <div className="mt-8 flex flex-wrap items-center gap-3 delay-225 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards">
-          <Button size="lg" onClick={onStart} className="h-12 gap-2 px-7 text-base">
-            Start messaging
-            <ArrowRight className="size-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground">Takes about a minute</span>
-        </div>
+    <section className="relative isolate overflow-hidden">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 mask-[linear-gradient(to_bottom,black_75%,transparent)]">
+        <GradientASCII
+          colors={['#1e3fd8', '#f6f8ff', '#a5d8ff', '#38bdf8']}
+          shape="horizon"
+          characters=" =+xX0S8#@"
+          cellSize={18}
+          density={0.8}
+          lightMode={resolvedTheme !== "dark"}
+          fontFamily='"Geist Mono Variable", ui-monospace, monospace'
+        />
       </div>
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-linear-to-b from-background/90 via-background/80 to-background/10 lg:bg-linear-to-r lg:from-background/95 lg:via-background/65" />
+      <div className="relative mx-auto grid min-h-[600px] max-w-6xl items-center gap-12 px-4 pt-12 pb-20 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:pt-20 lg:pb-28">
+        <div>
+          <h1 className="text-2xl font-semibold delay-75 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-3xl lg:text-4xl">
+            <span className="block">Talk to someone new.</span>
+            <span className="block">Stay a stranger.</span>
+          </h1>
 
-      <ChatPreview />
+          <p className="mt-5 max-w-[46ch] text-base text-muted-foreground delay-150 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards sm:text-md">
+            Pick a nickname, complete the camera check, and meet someone new.
+            Messages are encrypted in your browser, and chat history is not saved.
+          </p>
+
+          <div className="mt-8 flex flex-wrap items-center gap-3 delay-225 duration-600 animate-in fade-in slide-in-from-bottom-3 fill-mode-backwards">
+            <Button size="lg" onClick={onStart} className="h-12 gap-2 px-7 text-base">
+              Start messaging
+              <ArrowRight className="size-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground">Takes about a minute</span>
+          </div>
+        </div>
+
+        <ChatPreview />
+      </div>
     </section>
   );
 }
